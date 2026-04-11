@@ -1,0 +1,11 @@
+[package]
+name = "spy-parser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+spy-core = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-rust = { workspace = true }
+anyhow = { workspace = true }
