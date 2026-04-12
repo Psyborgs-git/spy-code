@@ -61,9 +61,8 @@ impl QueryRoot {
         let storage = ctx.data::<Arc<Mutex<Storage>>>()?;
         let storage = storage.lock().unwrap();
 
-        let _depth = depth.unwrap_or(1);
-        let edges = storage.get_incoming_edges(&id, EdgeKind::Calls)?;
-
+        let depth = depth.unwrap_or(1).max(1) as usize;
+        let edges = collect_incoming_edges(&storage, &id, EdgeKind::Calls, depth)?;
         Ok(edges.into_iter().map(|e| e.into()).collect())
     }
 
@@ -76,9 +75,8 @@ impl QueryRoot {
         let storage = ctx.data::<Arc<Mutex<Storage>>>()?;
         let storage = storage.lock().unwrap();
 
-        let _depth = depth.unwrap_or(1);
-        let edges = storage.get_edges(&id, EdgeKind::Calls)?;
-
+        let depth = depth.unwrap_or(1).max(1) as usize;
+        let edges = collect_outgoing_edges(&storage, &id, EdgeKind::Calls, depth)?;
         Ok(edges.into_iter().map(|e| e.into()).collect())
     }
 
@@ -96,18 +94,113 @@ impl QueryRoot {
         })
     }
 
-    async fn files(&self, _ctx: &Context<'_>) -> async_graphql::Result<Vec<String>> {
-        Ok(vec![])
+    async fn files(&self, ctx: &Context<'_>) -> async_graphql::Result<Vec<String>> {
+        let storage = ctx.data::<Arc<Mutex<Storage>>>()?;
+        let storage = storage.lock().unwrap();
+        Ok(storage.list_files()?)
     }
 
     async fn changed_since(
         &self,
-        _ctx: &Context<'_>,
-        _git_ref: String,
+        ctx: &Context<'_>,
+        #[graphql(name = "ref")] git_ref: String,
     ) -> async_graphql::Result<Vec<Node>> {
-        Ok(vec![])
+        let storage = ctx.data::<Arc<Mutex<Storage>>>()?;
+        let storage = storage.lock().unwrap();
+
+        // Resolve changed file paths using git
+        let changed_paths = spy_git::GitRepo::discover(std::path::Path::new("."))
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?
+            .map(|repo| repo.files_changed_since_ref(&git_ref))
+            .transpose()
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?
+            .unwrap_or_default();
+
+        if changed_paths.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let path_strings: Vec<String> = changed_paths
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+
+        let nodes = storage.get_nodes_for_files(&path_strings)?;
+        Ok(nodes.into_iter().map(Into::into).collect())
     }
 }
+
+// ---------------------------------------------------------------------------
+// Multi-hop BFS helpers
+// ---------------------------------------------------------------------------
+
+fn collect_outgoing_edges(
+    storage: &Storage,
+    start_id: &str,
+    kind: EdgeKind,
+    depth: usize,
+) -> anyhow::Result<Vec<spy_core::Edge>> {
+    let mut all_edges = Vec::new();
+    let mut frontier = vec![start_id.to_string()];
+    let mut visited = std::collections::HashSet::new();
+    visited.insert(start_id.to_string());
+
+    for _ in 0..depth {
+        let mut next_frontier = Vec::new();
+        for node_id in &frontier {
+            let edges = storage.get_edges(node_id, kind)?;
+            for e in edges {
+                let to = e.to_id.to_string();
+                if visited.insert(to.clone()) {
+                    next_frontier.push(to);
+                }
+                all_edges.push(e);
+            }
+        }
+        if next_frontier.is_empty() {
+            break;
+        }
+        frontier = next_frontier;
+    }
+
+    Ok(all_edges)
+}
+
+fn collect_incoming_edges(
+    storage: &Storage,
+    start_id: &str,
+    kind: EdgeKind,
+    depth: usize,
+) -> anyhow::Result<Vec<spy_core::Edge>> {
+    let mut all_edges = Vec::new();
+    let mut frontier = vec![start_id.to_string()];
+    let mut visited = std::collections::HashSet::new();
+    visited.insert(start_id.to_string());
+
+    for _ in 0..depth {
+        let mut next_frontier = Vec::new();
+        for node_id in &frontier {
+            let edges = storage.get_incoming_edges(node_id, kind)?;
+            for e in edges {
+                let from = e.from_id.to_string();
+                if visited.insert(from.clone()) {
+                    next_frontier.push(from);
+                }
+                all_edges.push(e);
+            }
+        }
+        if next_frontier.is_empty() {
+            break;
+        }
+        frontier = next_frontier;
+    }
+
+    Ok(all_edges)
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 fn matches_kind(node_kind: &NodeKind, gql_kind: &NodeKindGQL) -> bool {
     match (node_kind, gql_kind) {
@@ -117,6 +210,10 @@ fn matches_kind(node_kind: &NodeKind, gql_kind: &NodeKindGQL) -> bool {
         _ => false,
     }
 }
+
+// ---------------------------------------------------------------------------
+// GQL enums
+// ---------------------------------------------------------------------------
 
 #[derive(async_graphql::Enum, Copy, Clone, Eq, PartialEq)]
 pub enum NodeKindGQL {
@@ -162,6 +259,10 @@ impl From<spy_core::EdgeKind> for EdgeKindGQL {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// GQL object types
+// ---------------------------------------------------------------------------
 
 #[derive(SimpleObject)]
 pub struct Param {
@@ -266,3 +367,4 @@ pub struct IndexStatsGQL {
     last_indexed: Option<String>,
     last_git_sha: Option<String>,
 }
+

@@ -8,6 +8,10 @@ license.workspace = true
 spy-core = { workspace = true }
 tree-sitter = { workspace = true }
 tree-sitter-rust = { workspace = true }
+tree-sitter-python = "0.25"
+tree-sitter-typescript = "0.23"
+tree-sitter-javascript = "0.25"
+tree-sitter-go = "0.25"
 blake3 = { workspace = true }
 anyhow = { workspace = true }
 
