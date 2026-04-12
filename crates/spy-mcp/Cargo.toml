@@ -5,4 +5,11 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+spy-core = { workspace = true }
+spy-storage = { workspace = true }
+spy-git = { workspace = true }
+spy-graph = { workspace = true }
 anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }

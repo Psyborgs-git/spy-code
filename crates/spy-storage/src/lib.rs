@@ -443,6 +443,84 @@ impl Storage {
         Ok(results)
     }
     
+    pub fn list_files(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare("SELECT path FROM files ORDER BY path")?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        let mut paths = Vec::new();
+        for row in rows {
+            paths.push(row?);
+        }
+        Ok(paths)
+    }
+
+    pub fn get_nodes_for_files(&self, file_paths: &[String]) -> Result<Vec<Node>> {
+        if file_paths.is_empty() {
+            return Ok(vec![]);
+        }
+        let placeholders: String = file_paths
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let query = format!(
+            "SELECT node_id, kind, name, description, signatures, language,
+                    file_path, start_line, end_line, content_hash, git_sha, renamed_from
+             FROM nodes WHERE file_path IN ({})",
+            placeholders
+        );
+        let mut stmt = self.conn.prepare(&query)?;
+        let rows = stmt.query_map(
+            rusqlite::params_from_iter(file_paths.iter()),
+            |row| {
+                let signatures_str: String = row.get(4)?;
+                let signatures = serde_json::from_str(&signatures_str)
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?;
+                let kind_str: String = row.get(1)?;
+                let kind = match kind_str.as_str() {
+                    "function" => spy_core::NodeKind::Function,
+                    "class" => spy_core::NodeKind::Class,
+                    "constant" => spy_core::NodeKind::Constant,
+                    _ => return Err(rusqlite::Error::InvalidQuery),
+                };
+                let lang_str: String = row.get(5)?;
+                let language = match lang_str.as_str() {
+                    "rust" => spy_core::Language::Rust,
+                    "python" => spy_core::Language::Python,
+                    "typescript" => spy_core::Language::TypeScript,
+                    "javascript" => spy_core::Language::JavaScript,
+                    "go" => spy_core::Language::Go,
+                    _ => return Err(rusqlite::Error::InvalidQuery),
+                };
+                let renamed_from_str: Option<String> = row.get(11)?;
+                let renamed_from = renamed_from_str
+                    .map(|s| NodeId::from_string(s))
+                    .transpose()
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?;
+                Ok(Node {
+                    node_id: NodeId::from_string(row.get(0)?)
+                        .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                    kind,
+                    name: row.get(2)?,
+                    description: row.get(3)?,
+                    signatures,
+                    language,
+                    file_path: row.get(6)?,
+                    start_line: row.get(7)?,
+                    end_line: row.get(8)?,
+                    content_hash: row.get(9)?,
+                    git_sha: row.get(10)?,
+                    renamed_from,
+                })
+            },
+        )?;
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+        Ok(results)
+    }
+
     pub fn get_stats(&self) -> Result<IndexStats> {
         let node_count: i64 = self.conn.query_row("SELECT COUNT(*) FROM nodes", [], |row| row.get(0))?;
         let edge_count: i64 = self.conn.query_row(

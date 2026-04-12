@@ -13,6 +13,8 @@ spy-core = { workspace = true }
 spy-storage = { workspace = true }
 spy-indexer = { workspace = true }
 spy-graph = { workspace = true }
+spy-git = { workspace = true }
+spy-mcp = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }

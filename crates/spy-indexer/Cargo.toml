@@ -9,6 +9,10 @@ spy-core = { workspace = true }
 spy-parser = { workspace = true }
 spy-resolvers = { workspace = true }
 spy-storage = { workspace = true }
+spy-git = { workspace = true }
 anyhow = { workspace = true }
 walkdir = { workspace = true }
 blake3 = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

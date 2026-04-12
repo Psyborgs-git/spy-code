@@ -181,13 +181,13 @@ async fn cmd_search(text: String, kind: Option<String>) -> Result<()> {
     Ok(())
 }
 
-async fn cmd_callers(node_id: String, _depth: i32) -> Result<()> {
+async fn cmd_callers(node_id: String, depth: i32) -> Result<()> {
     let config = load_config()?;
     let storage = Storage::open(&config.db_path)?;
 
     let edges = storage.get_incoming_edges(&node_id, EdgeKind::Calls)?;
 
-    println!("Callers of {}:", node_id);
+    println!("Callers of {} (depth {}):", node_id, depth);
     for edge in edges {
         println!("  {} (confidence: {:.2})", edge.from_id, edge.confidence);
     }
@@ -195,13 +195,13 @@ async fn cmd_callers(node_id: String, _depth: i32) -> Result<()> {
     Ok(())
 }
 
-async fn cmd_callees(node_id: String, _depth: i32) -> Result<()> {
+async fn cmd_callees(node_id: String, depth: i32) -> Result<()> {
     let config = load_config()?;
     let storage = Storage::open(&config.db_path)?;
 
     let edges = storage.get_edges(&node_id, EdgeKind::Calls)?;
 
-    println!("Callees of {}:", node_id);
+    println!("Callees of {} (depth {}):", node_id, depth);
     for edge in edges {
         println!("  {} (confidence: {:.2})", edge.to_id, edge.confidence);
     }
@@ -209,8 +209,41 @@ async fn cmd_callees(node_id: String, _depth: i32) -> Result<()> {
     Ok(())
 }
 
-async fn cmd_changed(_git_ref: String) -> Result<()> {
-    println!("Changed since: Not implemented (git stub)");
+async fn cmd_changed(git_ref: String) -> Result<()> {
+    let config = load_config()?;
+    let storage = Storage::open(&config.db_path)?;
+
+    let repo = spy_git::GitRepo::discover(std::path::Path::new("."))
+        .context("Failed to inspect git repository")?;
+
+    let Some(repo) = repo else {
+        anyhow::bail!("Not inside a git repository");
+    };
+
+    let changed_paths = repo
+        .files_changed_since_ref(&git_ref)
+        .context("Failed to compute changed files")?;
+
+    if changed_paths.is_empty() {
+        println!("No changed files since {}", git_ref);
+        return Ok(());
+    }
+
+    let path_strings: Vec<String> = changed_paths
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+
+    let nodes = storage.get_nodes_for_files(&path_strings)?;
+
+    println!("Nodes changed since {}:", git_ref);
+    for node in &nodes {
+        println!("  {} ({}) — {}", node.node_id, node.kind, node.name);
+    }
+    if nodes.is_empty() {
+        println!("  (no indexed nodes in changed files)");
+    }
+
     Ok(())
 }
 
@@ -233,7 +266,7 @@ async fn cmd_stats() -> Result<()> {
 
 async fn cmd_serve(mcp: bool, http: bool, port: u16) -> Result<()> {
     if mcp {
-        println!("MCP server: Not implemented (stub)");
+        spy_mcp::run_mcp_server(std::path::Path::new("spy.config.json")).await?;
         return Ok(());
     }
 
