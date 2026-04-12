@@ -1,0 +1,52 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/spy-core",
+    "crates/spy-parser",
+    "crates/spy-resolvers",
+    "crates/spy-storage",
+    "crates/spy-graph",
+    "crates/spy-git",
+    "crates/spy-indexer",
+    "crates/spy-mcp",
+    "crates/spy-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/yourusername/spy-code"
+
+[workspace.dependencies]
+# Core types
+spy-core = { path = "crates/spy-core" }
+spy-parser = { path = "crates/spy-parser" }
+spy-resolvers = { path = "crates/spy-resolvers" }
+spy-storage = { path = "crates/spy-storage" }
+spy-graph = { path = "crates/spy-graph" }
+spy-git = { path = "crates/spy-git" }
+spy-indexer = { path = "crates/spy-indexer" }
+spy-mcp = { path = "crates/spy-mcp" }
+
+# External dependencies
+anyhow = "1"
+thiserror = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+blake3 = "1"
+walkdir = "2"
+glob = "0.3"
+rusqlite = { version = "0.31", features = ["bundled"] }
+tree-sitter = "0.24"
+tree-sitter-rust = "0.23"
+async-graphql = { version = "7", features = ["chrono"] }
+async-graphql-axum = "7"
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors"] }
+clap = { version = "4", features = ["derive"] }
+chrono = "0.4"
+tracing = "0.1"
+tracing-subscriber = "0.3"
