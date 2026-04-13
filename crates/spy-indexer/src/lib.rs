@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
-use spy_core::{Config, Language, ProjectScope};
+use glob::Pattern;
+use spy_core::{Config, Language, LanguageConfig, ProjectScope};
 use spy_git::{FileChangeStatus, GitRepo};
 use spy_storage::{FileRecord, Storage};
+use std::collections::HashSet;
 use std::path::Path;
 use walkdir::WalkDir;
 
@@ -174,12 +176,20 @@ impl Indexer {
                     let old_abs = workdir.join(old_path);
                     self.storage
                         .delete_nodes_for_file(&old_abs.to_string_lossy())?;
-                    if detect_language(&abs).is_some() {
+                    if self.should_index_path(workdir, &abs) && abs.exists() {
                         to_parse.push(abs);
                     }
                 }
-                FileChangeStatus::Added | FileChangeStatus::Modified => {
-                    if detect_language(&abs).is_some() && abs.exists() {
+                FileChangeStatus::Added => {
+                    if self.should_index_path(workdir, &abs) && abs.exists() {
+                        to_parse.push(abs);
+                    }
+                }
+                FileChangeStatus::Modified => {
+                    if self.should_index_path(workdir, &abs)
+                        && abs.exists()
+                        && self.should_reparse(&abs)?
+                    {
                         to_parse.push(abs);
                     }
                 }
@@ -202,33 +212,58 @@ impl Indexer {
         ];
 
         let mut files = Vec::new();
+        let mut seen = HashSet::new();
 
-        for entry in WalkDir::new(root).follow_links(self.config.git.follow_symlinks) {
-            let entry = entry?;
-            if entry.file_type().is_dir() {
-                let name = entry.file_name().to_string_lossy();
-                if ignore_dirs.iter().any(|d| *d == name.as_ref()) {
-                    // walkdir doesn't support skip-dir natively; we filter below
+        for language in [
+            Language::Rust,
+            Language::Python,
+            Language::TypeScript,
+            Language::JavaScript,
+            Language::Go,
+        ] {
+            let Some(language_config) = self.language_config(language) else {
+                continue;
+            };
+
+            for scan_root in self.language_roots(root, &language_config) {
+                if !scan_root.exists() {
+                    continue;
                 }
-                continue;
-            }
 
-            // Skip files inside ignored directories
-            let path = entry.path();
-            let in_ignored = path.ancestors().any(|a| {
-                a.file_name()
-                    .map(|n| ignore_dirs.iter().any(|d| *d == n.to_string_lossy().as_ref()))
-                    .unwrap_or(false)
-            });
-            if in_ignored {
-                continue;
-            }
+                for entry in WalkDir::new(&scan_root).follow_links(self.config.git.follow_symlinks) {
+                    let entry = entry?;
+                    let path = entry.path();
 
-            if detect_language(path).is_some() {
-                let file_size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-                let max_bytes = self.config.indexing.max_file_size_kb * 1024;
-                if file_size <= max_bytes {
-                    files.push(path.to_path_buf());
+                    if entry.file_type().is_dir() {
+                        continue;
+                    }
+
+                    if !seen.insert(path.to_path_buf()) {
+                        continue;
+                    }
+
+                    let in_ignored_dir = path.ancestors().any(|ancestor| {
+                        ancestor
+                            .file_name()
+                            .map(|name| {
+                                ignore_dirs
+                                    .iter()
+                                    .any(|dir| *dir == name.to_string_lossy().as_ref())
+                            })
+                            .unwrap_or(false)
+                    });
+                    if in_ignored_dir
+                        || detect_language(path) != Some(language)
+                        || !self.should_index_path_with_config(root, path, &language_config)
+                    {
+                        continue;
+                    }
+
+                    let file_size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                    let max_bytes = self.config.indexing.max_file_size_kb * 1024;
+                    if file_size <= max_bytes {
+                        files.push(path.to_path_buf());
+                    }
                 }
             }
         }
@@ -244,6 +279,62 @@ impl Indexer {
         } else {
             Ok(true)
         }
+    }
+
+    fn language_config(&self, language: Language) -> Option<LanguageConfig> {
+        let config = match language {
+            Language::Rust => self.config.languages.rust.clone().unwrap_or_default(),
+            Language::Python => self.config.languages.python.clone().unwrap_or_default(),
+            Language::TypeScript | Language::JavaScript => {
+                self.config.languages.typescript.clone().unwrap_or_default()
+            }
+            Language::Go => self.config.languages.go.clone().unwrap_or_default(),
+        };
+
+        config.enabled.then_some(config)
+    }
+
+    fn language_roots(
+        &self,
+        root: &Path,
+        language_config: &LanguageConfig,
+    ) -> Vec<std::path::PathBuf> {
+        language_config
+            .roots
+            .iter()
+            .map(|relative| match relative.as_str() {
+                "." | "./" => root.to_path_buf(),
+                _ => root.join(relative),
+            })
+            .collect()
+    }
+
+    fn should_index_path(&self, root: &Path, path: &Path) -> bool {
+        let Some(language) = detect_language(path) else {
+            return false;
+        };
+        let Some(language_config) = self.language_config(language) else {
+            return false;
+        };
+
+        self.should_index_path_with_config(root, path, &language_config)
+    }
+
+    fn should_index_path_with_config(
+        &self,
+        root: &Path,
+        path: &Path,
+        language_config: &LanguageConfig,
+    ) -> bool {
+        let Ok(relative_path) = path.strip_prefix(root) else {
+            return false;
+        };
+        let relative_path = normalize_path(relative_path);
+
+        !language_config
+            .ignore
+            .iter()
+            .any(|pattern| matches_ignore_pattern(&relative_path, pattern))
     }
 
     // -----------------------------------------------------------------------
@@ -297,6 +388,23 @@ fn compute_file_hash(source: &[u8]) -> String {
     blake3::hash(source).to_hex().to_string()
 }
 
+fn normalize_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn matches_ignore_pattern(relative_path: &str, pattern: &str) -> bool {
+    let normalized_pattern = pattern.replace('\\', "/");
+
+    if normalized_pattern.ends_with('/') {
+        let prefix = normalized_pattern.trim_end_matches('/');
+        return relative_path == prefix || relative_path.starts_with(&format!("{prefix}/"));
+    }
+
+    Pattern::new(&normalized_pattern)
+        .map(|compiled| compiled.matches(relative_path))
+        .unwrap_or(false)
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct IndexStats {
     pub files_scanned: usize,
@@ -305,4 +413,3 @@ pub struct IndexStats {
     pub nodes_extracted: usize,
     pub edges_extracted: usize,
 }
-

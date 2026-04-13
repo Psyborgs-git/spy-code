@@ -1,5 +1,5 @@
 use anyhow::Result;
-use spy_core::{Config, Language};
+use spy_core::{Config, Language, LanguageConfig};
 use spy_indexer::{detect_language, Indexer};
 use spy_storage::Storage;
 use std::path::Path;
@@ -18,6 +18,13 @@ fn fixtures_path(lang: &str) -> std::path::PathBuf {
         .parent().unwrap()
         .join("tests/fixtures")
         .join(lang)
+}
+
+fn write_file(path: &Path, contents: &str) {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).unwrap();
+    }
+    std::fs::write(path, contents).unwrap();
 }
 
 #[test]
@@ -106,5 +113,70 @@ fn test_incremental_index_skips_unchanged() -> Result<()> {
         stats2.files_parsed, 0,
         "Incremental index should parse 0 unchanged files"
     );
+    Ok(())
+}
+
+#[test]
+fn test_index_respects_language_enable_flags() -> Result<()> {
+    let project = TempDir::new()?;
+    write_file(&project.path().join("src/lib.rs"), "fn keep() {}");
+    write_file(&project.path().join("src/app.py"), "def skip():\n    pass\n");
+
+    let (_dir, storage) = make_storage();
+    let mut config = Config::default();
+    config.languages.python = Some(LanguageConfig {
+        enabled: false,
+        ..LanguageConfig::default()
+    });
+    config.languages.typescript = Some(LanguageConfig {
+        enabled: false,
+        ..LanguageConfig::default()
+    });
+    config.languages.go = Some(LanguageConfig {
+        enabled: false,
+        ..LanguageConfig::default()
+    });
+
+    let mut indexer = Indexer::new(storage, config);
+    let stats = indexer.index(project.path(), true)?;
+
+    assert_eq!(stats.files_parsed, 1);
+    Ok(())
+}
+
+#[test]
+fn test_index_respects_configured_roots_and_ignores() -> Result<()> {
+    let project = TempDir::new()?;
+    write_file(&project.path().join("src/lib.rs"), "fn keep() {}");
+    write_file(&project.path().join("generated/skip.rs"), "fn skip() {}");
+    write_file(
+        &project.path().join("src/ignored/nested.rs"),
+        "fn ignored() {}",
+    );
+
+    let (_dir, storage) = make_storage();
+    let mut config = Config::default();
+    config.languages.rust = Some(LanguageConfig {
+        roots: vec!["src".to_string()],
+        ignore: vec!["src/ignored/".to_string()],
+        ..LanguageConfig::default()
+    });
+    config.languages.python = Some(LanguageConfig {
+        enabled: false,
+        ..LanguageConfig::default()
+    });
+    config.languages.typescript = Some(LanguageConfig {
+        enabled: false,
+        ..LanguageConfig::default()
+    });
+    config.languages.go = Some(LanguageConfig {
+        enabled: false,
+        ..LanguageConfig::default()
+    });
+
+    let mut indexer = Indexer::new(storage, config);
+    let stats = indexer.index(project.path(), true)?;
+
+    assert_eq!(stats.files_parsed, 1);
     Ok(())
 }

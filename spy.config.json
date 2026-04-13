@@ -2,10 +2,42 @@
   "version": 1,
   "db_path": ".spy-code/graph.db",
   "languages": {
-    "rust": null,
-    "python": null,
-    "typescript": null,
-    "go": null
+    "rust": {
+      "enabled": true,
+      "roots": [
+        "./"
+      ],
+      "ignore": [],
+      "resolver": "builtin",
+      "tsconfig": null
+    },
+    "python": {
+      "enabled": true,
+      "roots": [
+        "./"
+      ],
+      "ignore": [],
+      "resolver": "builtin",
+      "tsconfig": null
+    },
+    "typescript": {
+      "enabled": true,
+      "roots": [
+        "./"
+      ],
+      "ignore": [],
+      "resolver": "builtin",
+      "tsconfig": null
+    },
+    "go": {
+      "enabled": true,
+      "roots": [
+        "./"
+      ],
+      "ignore": [],
+      "resolver": "builtin",
+      "tsconfig": null
+    }
   },
   "git": {
     "enabled": true,
@@ -14,7 +46,7 @@
   },
   "indexing": {
     "max_file_size_kb": 2048,
-    "parallelism": null,
+    "parallelism": "auto",
     "fail_fast": false
   },
   "search": {

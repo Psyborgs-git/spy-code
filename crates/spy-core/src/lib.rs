@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::path::PathBuf;
 use thiserror::Error;
@@ -346,11 +347,64 @@ impl Default for IndexingConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParallelismConfig {
     Auto,
     Threads(usize),
+}
+
+impl Serialize for ParallelismConfig {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            ParallelismConfig::Auto => serializer.serialize_str("auto"),
+            ParallelismConfig::Threads(threads) => serializer.serialize_u64(*threads as u64),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ParallelismConfig {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct ParallelismVisitor;
+
+        impl<'de> Visitor<'de> for ParallelismVisitor {
+            type Value = ParallelismConfig;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str(r#""auto" or a positive integer"#)
+            }
+
+            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                match value {
+                    "auto" => Ok(ParallelismConfig::Auto),
+                    other => Err(E::custom(format!(
+                        "invalid parallelism value '{other}', expected \"auto\""
+                    ))),
+                }
+            }
+
+            fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if value == 0 {
+                    Err(E::custom("parallelism thread count must be greater than zero"))
+                } else {
+                    Ok(ParallelismConfig::Threads(value as usize))
+                }
+            }
+        }
+
+        deserializer.deserialize_any(ParallelismVisitor)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -375,7 +429,12 @@ impl Default for Config {
         Config {
             version: 1,
             db_path: ".spy-code/graph.db".to_string(),
-            languages: LanguagesConfig::default(),
+            languages: LanguagesConfig {
+                rust: Some(LanguageConfig::default()),
+                python: Some(LanguageConfig::default()),
+                typescript: Some(LanguageConfig::default()),
+                go: Some(LanguageConfig::default()),
+            },
             git: GitConfig::default(),
             indexing: IndexingConfig::default(),
             search: SearchConfig::default(),
@@ -414,5 +473,26 @@ mod tests {
         assert_eq!(file, "bar.rs");
         assert_eq!(class, "Baz");
         assert_eq!(symbol, "qux");
+    }
+
+    #[test]
+    fn test_default_config_serializes_enabled_languages() {
+        let config = Config::default();
+        let json = serde_json::to_value(config).unwrap();
+
+        assert_eq!(json["languages"]["rust"]["enabled"], true);
+        assert_eq!(json["languages"]["python"]["enabled"], true);
+        assert_eq!(json["languages"]["typescript"]["enabled"], true);
+        assert_eq!(json["languages"]["go"]["enabled"], true);
+        assert_eq!(json["indexing"]["parallelism"], "auto");
+    }
+
+    #[test]
+    fn test_parallelism_config_deserializes_string_and_int() {
+        let auto: ParallelismConfig = serde_json::from_str(r#""auto""#).unwrap();
+        let threads: ParallelismConfig = serde_json::from_str("4").unwrap();
+
+        assert_eq!(auto, ParallelismConfig::Auto);
+        assert_eq!(threads, ParallelismConfig::Threads(4));
     }
 }
