@@ -20,12 +20,12 @@ Rust, Python, TypeScript/JavaScript, Go. All via tree-sitter grammars + per-lang
 
 ## Document index
 
-- `ARCHITECTURE.md` — system layout, crates, data flow
-- `NODE_ID_SPEC.md` — ID format, collision rules
-- `SCHEMA.md` — SQLite tables + GraphQL schema
-- `RESOLVERS.md` — per-language resolver contract
-- `CONFIG.md` — `spy.config.json` spec
-- `CLI_MCP.md` — CLI commands + MCP tool surface
-- `GIT_INTEGRATION.md` — change tracking
-- `ROADMAP.md` — milestones
-- `TESTING.md` — test strategy
+- `docs/ARCHITECTURE.md` — system layout, crates, data flow
+- `docs/NODE_ID_SPEC.md` — ID format, collision rules
+- `docs/SCHEMA.md` — SQLite tables + GraphQL schema
+- `docs/RESOLVERS.md` — per-language resolver contract
+- `docs/CONFIG.md` — `spy.config.json` spec
+- `docs/CLI_MCP.md` — CLI commands + MCP tool surface
+- `docs/GIT_INTEGRATION.md` — change tracking
+- `docs/ROADMAP.md` — milestones
+- `docs/TESTING.md` — test strategy
