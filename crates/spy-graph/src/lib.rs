@@ -359,6 +359,146 @@ pub struct SearchResult {
     score: f64,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+    use spy_core::{Edge as CoreEdge, Language, Node as CoreNode, NodeId, Signature};
+
+    fn sample_node(file_path: &str, symbol: &str, name: &str) -> anyhow::Result<CoreNode> {
+        Ok(CoreNode {
+            node_id: NodeId::new("src", file_path, "_", symbol)?,
+            kind: spy_core::NodeKind::Function,
+            name: name.to_string(),
+            description: Some(format!("Description for {}", name)),
+            signatures: vec![Signature {
+                params: vec![],
+                returns: Some("()".to_string()),
+            }],
+            language: Language::Rust,
+            file_path: format!("src/{}", file_path),
+            start_line: 1,
+            end_line: 5,
+            content_hash: format!("hash-{}", symbol),
+            git_sha: None,
+            renamed_from: None,
+        })
+    }
+
+    fn sample_edge(from: &CoreNode, to: &CoreNode) -> CoreEdge {
+        CoreEdge {
+            from_id: from.node_id.clone(),
+            to_id: to.node_id.clone(),
+            kind: EdgeKind::Calls,
+            confidence: 1.0,
+        }
+    }
+
+    #[test]
+    fn test_collect_outgoing_edges_respects_depth_and_cycles() -> anyhow::Result<()> {
+        let mut storage = Storage::open_in_memory()?;
+        let node_a = sample_node("a.rs", "a", "alpha")?;
+        let node_b = sample_node("b.rs", "b", "beta")?;
+        let node_c = sample_node("c.rs", "c", "charlie")?;
+
+        for node in [&node_a, &node_b, &node_c] {
+            storage.upsert_node(node)?;
+        }
+        for edge in [
+            sample_edge(&node_a, &node_b),
+            sample_edge(&node_b, &node_c),
+            sample_edge(&node_c, &node_a),
+        ] {
+            storage.upsert_edge(&edge)?;
+        }
+
+        let depth_one = collect_outgoing_edges(&storage, node_a.node_id.as_str(), EdgeKind::Calls, 1)?;
+        assert_eq!(depth_one.len(), 1);
+        assert_eq!(depth_one[0].to_id, node_b.node_id);
+
+        let depth_two = collect_outgoing_edges(&storage, node_a.node_id.as_str(), EdgeKind::Calls, 2)?;
+        assert_eq!(depth_two.len(), 2);
+        assert_eq!(depth_two[1].to_id, node_c.node_id);
+
+        let depth_three = collect_outgoing_edges(&storage, node_a.node_id.as_str(), EdgeKind::Calls, 3)?;
+        assert_eq!(depth_three.len(), 3);
+        assert_eq!(depth_three[2].to_id, node_a.node_id);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_collect_incoming_edges_respects_depth() -> anyhow::Result<()> {
+        let mut storage = Storage::open_in_memory()?;
+        let node_a = sample_node("a.rs", "a", "alpha")?;
+        let node_b = sample_node("b.rs", "b", "beta")?;
+        let node_c = sample_node("c.rs", "c", "charlie")?;
+
+        for node in [&node_a, &node_b, &node_c] {
+            storage.upsert_node(node)?;
+        }
+        for edge in [
+            sample_edge(&node_a, &node_b),
+            sample_edge(&node_b, &node_c),
+        ] {
+            storage.upsert_edge(&edge)?;
+        }
+
+        let incoming = collect_incoming_edges(&storage, node_c.node_id.as_str(), EdgeKind::Calls, 2)?;
+        assert_eq!(incoming.len(), 2);
+        assert_eq!(incoming[0].from_id, node_b.node_id);
+        assert_eq!(incoming[1].from_id, node_a.node_id);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_schema_queries_return_expected_data() -> anyhow::Result<()> {
+        let mut storage = Storage::open_in_memory()?;
+        let node_a = sample_node("a.rs", "a", "auth_user")?;
+        let node_b = sample_node("b.rs", "b", "authorize_user")?;
+
+        storage.upsert_node(&node_a)?;
+        storage.upsert_node(&node_b)?;
+        storage.upsert_edge(&sample_edge(&node_a, &node_b))?;
+        storage.upsert_file(&spy_storage::FileRecord {
+            path: "src/a.rs".to_string(),
+            language: "rust".to_string(),
+            content_hash: "hash-a".to_string(),
+            last_indexed: 1,
+            git_sha: None,
+        })?;
+        storage.set_meta("last_git_sha", "sha123")?;
+
+        let schema = create_schema(Arc::new(Mutex::new(storage)));
+        let response = schema
+            .execute(
+                r#"
+                {
+                  node(id: "src:a.rs:_:a") { id name filePath }
+                  files
+                  stats { nodeCount edgeCount fileCount lastGitSha }
+                  callees(id: "src:a.rs:_:a", depth: 2) { fromId toId confidence }
+                }
+                "#,
+            )
+            .await;
+
+        assert!(response.errors.is_empty());
+        let data = response.data.into_json()?;
+
+        assert_eq!(data.pointer("/node/name"), Some(&Value::String("auth_user".to_string())));
+        assert_eq!(data.pointer("/files/0"), Some(&Value::String("src/a.rs".to_string())));
+        assert_eq!(data.pointer("/stats/nodeCount"), Some(&Value::from(2)));
+        assert_eq!(data.pointer("/stats/edgeCount"), Some(&Value::from(1)));
+        assert_eq!(data.pointer("/stats/fileCount"), Some(&Value::from(1)));
+        assert_eq!(data.pointer("/stats/lastGitSha"), Some(&Value::String("sha123".to_string())));
+        assert_eq!(data.pointer("/callees/0/toId"), Some(&Value::String("src:b.rs:_:b".to_string())));
+
+        Ok(())
+    }
+}
+
 #[derive(SimpleObject)]
 pub struct IndexStatsGQL {
     node_count: i32,
@@ -367,4 +507,3 @@ pub struct IndexStatsGQL {
     last_indexed: Option<String>,
     last_git_sha: Option<String>,
 }
-

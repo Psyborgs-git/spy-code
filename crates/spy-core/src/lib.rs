@@ -386,6 +386,7 @@ impl Default for Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     
     #[test]
     fn test_node_id_format() {
@@ -414,5 +415,68 @@ mod tests {
         assert_eq!(file, "bar.rs");
         assert_eq!(class, "Baz");
         assert_eq!(symbol, "qux");
+    }
+
+    #[test]
+    fn test_node_id_from_string_rejects_invalid_format() {
+        let err = NodeId::from_string("src:lib.rs:parse".to_string()).unwrap_err();
+        assert!(matches!(err, SpyError::InvalidNodeId(_)));
+    }
+
+    #[test]
+    fn test_language_and_kind_helpers() {
+        assert_eq!(Language::JavaScript.as_str(), "javascript");
+        assert_eq!(NodeKind::Constant.as_str(), "constant");
+        assert_eq!(EdgeKind::Imports.table_name(), "edges_imports");
+        assert_eq!(EdgeKind::Calls.as_str(), "calls");
+    }
+
+    #[test]
+    fn test_project_scope_helpers() {
+        let node = Node {
+            node_id: NodeId::new("src", "lib.rs", "_", "parse").unwrap(),
+            kind: NodeKind::Function,
+            name: "parse".to_string(),
+            description: Some("Parse input".to_string()),
+            signatures: vec![],
+            language: Language::Rust,
+            file_path: "src/lib.rs".to_string(),
+            start_line: 1,
+            end_line: 3,
+            content_hash: "hash".to_string(),
+            git_sha: Some("abc123".to_string()),
+            renamed_from: None,
+        };
+
+        let mut scope = ProjectScope::new();
+        scope.add_node(node.clone());
+
+        assert_eq!(scope.get_node(node.node_id.as_str()).unwrap().name, "parse");
+        assert_eq!(scope.find_nodes_by_name("parse").len(), 1);
+        assert_eq!(scope.all_nodes().count(), 1);
+    }
+
+    #[test]
+    fn test_config_defaults_from_minimal_json() {
+        let config: Config = serde_json::from_value(json!({})).unwrap();
+
+        assert_eq!(config.version, 1);
+        assert_eq!(config.db_path, ".spy-code/graph.db");
+        assert!(config.git.enabled);
+        assert!(config.git.track_renames);
+        assert!(!config.git.follow_symlinks);
+        assert_eq!(config.indexing.max_file_size_kb, 2048);
+        assert!(matches!(config.indexing.parallelism, ParallelismConfig::Auto));
+        assert_eq!(config.search.fts_tokenizer, "unicode61");
+    }
+
+    #[test]
+    fn test_config_rejects_unknown_fields() {
+        let err = serde_json::from_value::<Config>(json!({
+            "unexpected": true
+        }))
+        .unwrap_err();
+
+        assert!(err.to_string().contains("unknown field"));
     }
 }
