@@ -399,7 +399,7 @@ mod tests {
         let mut storage = Storage::open_in_memory()?;
         let node_a = sample_node("a.rs", "a", "alpha")?;
         let node_b = sample_node("b.rs", "b", "beta")?;
-        let node_c = sample_node("c.rs", "c", "gamma")?;
+        let node_c = sample_node("c.rs", "c", "charlie")?;
 
         for node in [&node_a, &node_b, &node_c] {
             storage.upsert_node(node)?;
@@ -432,7 +432,7 @@ mod tests {
         let mut storage = Storage::open_in_memory()?;
         let node_a = sample_node("a.rs", "a", "alpha")?;
         let node_b = sample_node("b.rs", "b", "beta")?;
-        let node_c = sample_node("c.rs", "c", "gamma")?;
+        let node_c = sample_node("c.rs", "c", "charlie")?;
 
         for node in [&node_a, &node_b, &node_c] {
             storage.upsert_node(node)?;
