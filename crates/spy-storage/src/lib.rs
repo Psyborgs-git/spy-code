@@ -563,6 +563,26 @@ pub struct IndexStats {
 mod tests {
     use super::*;
     use spy_core::{Language, NodeKind, Signature};
+
+    fn sample_node(file_path: &str, symbol: &str, name: &str, description: Option<&str>) -> Result<Node> {
+        Ok(Node {
+            node_id: NodeId::new("src", file_path, "_", symbol)?,
+            kind: NodeKind::Function,
+            name: name.to_string(),
+            description: description.map(str::to_string),
+            signatures: vec![Signature {
+                params: vec![],
+                returns: Some("()".to_string()),
+            }],
+            language: Language::Rust,
+            file_path: format!("src/{}", file_path),
+            start_line: 1,
+            end_line: 5,
+            content_hash: format!("hash-{}", symbol),
+            git_sha: None,
+            renamed_from: None,
+        })
+    }
     
     #[test]
     fn test_upsert_and_get_node() -> Result<()> {
@@ -621,6 +641,109 @@ mod tests {
         let results = storage.search_nodes("auth", 10)?;
         assert!(!results.is_empty());
         
+        Ok(())
+    }
+
+    #[test]
+    fn test_upsert_node_updates_existing_search_index() -> Result<()> {
+        let mut storage = Storage::open_in_memory()?;
+        let mut node = sample_node("lib.rs", "auth_user", "auth_user", Some("Authenticate a user"))?;
+        storage.upsert_node(&node)?;
+
+        let original_results = storage.search_nodes("Authenticate", 10)?;
+        assert_eq!(original_results.len(), 1);
+
+        node.description = Some("Authorize a request".to_string());
+        node.content_hash = "updated-hash".to_string();
+        storage.upsert_node(&node)?;
+
+        assert!(storage.search_nodes("Authenticate", 10)?.is_empty());
+        let updated_results = storage.search_nodes("Authorize", 10)?;
+        assert_eq!(updated_results.len(), 1);
+        assert_eq!(updated_results[0].0.content_hash, "updated-hash");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_edges_files_meta_and_stats() -> Result<()> {
+        let mut storage = Storage::open_in_memory()?;
+        let node_a = sample_node("a.rs", "a", "alpha", Some("Alpha node"))?;
+        let node_b = sample_node("b.rs", "b", "beta", Some("Beta node"))?;
+
+        storage.upsert_node(&node_a)?;
+        storage.upsert_node(&node_b)?;
+
+        let edge = Edge {
+            from_id: node_a.node_id.clone(),
+            to_id: node_b.node_id.clone(),
+            kind: EdgeKind::Calls,
+            confidence: 0.8,
+        };
+        storage.upsert_edge(&edge)?;
+
+        let outgoing = storage.get_edges(node_a.node_id.as_str(), EdgeKind::Calls)?;
+        assert_eq!(outgoing.len(), 1);
+        assert_eq!(outgoing[0].to_id, node_b.node_id);
+        assert_eq!(outgoing[0].confidence, 0.8);
+
+        let incoming = storage.get_incoming_edges(node_b.node_id.as_str(), EdgeKind::Calls)?;
+        assert_eq!(incoming.len(), 1);
+        assert_eq!(incoming[0].from_id, node_a.node_id);
+
+        let file_a = FileRecord {
+            path: "src/a.rs".to_string(),
+            language: "rust".to_string(),
+            content_hash: "hash-a".to_string(),
+            last_indexed: 10,
+            git_sha: Some("sha-a".to_string()),
+        };
+        let file_b = FileRecord {
+            path: "src/b.rs".to_string(),
+            language: "rust".to_string(),
+            content_hash: "hash-b".to_string(),
+            last_indexed: 20,
+            git_sha: None,
+        };
+        storage.upsert_file(&file_b)?;
+        storage.upsert_file(&file_a)?;
+
+        let listed_files = storage.list_files()?;
+        assert_eq!(listed_files, vec!["src/a.rs".to_string(), "src/b.rs".to_string()]);
+
+        let stored_file = storage.get_file("src/a.rs")?.unwrap();
+        assert_eq!(stored_file.content_hash, "hash-a");
+        assert_eq!(stored_file.git_sha.as_deref(), Some("sha-a"));
+
+        let file_nodes = storage.get_nodes_for_files(&listed_files)?;
+        assert_eq!(file_nodes.len(), 2);
+        assert!(storage.get_nodes_for_files(&[] as &[String])?.is_empty());
+
+        storage.set_meta("last_git_sha", "sha123")?;
+        assert_eq!(storage.get_meta("last_git_sha")?, Some("sha123".to_string()));
+
+        let stats = storage.get_stats()?;
+        assert_eq!(stats.node_count, 2);
+        assert_eq!(stats.edge_count, 1);
+        assert_eq!(stats.file_count, 2);
+        assert_eq!(stats.last_git_sha.as_deref(), Some("sha123"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_delete_nodes_for_file_removes_matching_nodes() -> Result<()> {
+        let mut storage = Storage::open_in_memory()?;
+        let keep = sample_node("keep.rs", "keep", "keep", None)?;
+        let delete = sample_node("delete.rs", "delete", "delete", None)?;
+
+        storage.upsert_node(&keep)?;
+        storage.upsert_node(&delete)?;
+        storage.delete_nodes_for_file("src/delete.rs")?;
+
+        assert!(storage.get_node(delete.node_id.as_str())?.is_none());
+        assert!(storage.get_node(keep.node_id.as_str())?.is_some());
+
         Ok(())
     }
 }
