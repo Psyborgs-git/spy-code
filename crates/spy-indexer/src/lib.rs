@@ -397,7 +397,10 @@ fn matches_ignore_pattern(relative_path: &str, pattern: &str) -> bool {
 
     if normalized_pattern.ends_with('/') {
         let prefix = normalized_pattern.trim_end_matches('/');
-        return relative_path == prefix || relative_path.starts_with(&format!("{prefix}/"));
+        return relative_path == prefix
+            || relative_path
+                .strip_prefix(prefix)
+                .is_some_and(|suffix| suffix.starts_with('/'));
     }
 
     Pattern::new(&normalized_pattern)
