@@ -29,16 +29,16 @@ impl NodeId {
         let file = if file.is_empty() { "_" } else { file };
         let class = if class.is_empty() { "_" } else { class };
         let symbol = if symbol.is_empty() { "_" } else { symbol };
-        
+
         let id = format!("{}:{}:{}:{}", dir, file, class, symbol);
-        
+
         if id.len() > 512 {
             return Err(SpyError::NodeIdTooLong(id));
         }
-        
+
         Ok(NodeId(id))
     }
-    
+
     pub fn from_string(s: String) -> Result<Self> {
         if s.len() > 512 {
             return Err(SpyError::NodeIdTooLong(s));
@@ -49,11 +49,11 @@ impl NodeId {
         }
         Ok(NodeId(s))
     }
-    
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
-    
+
     pub fn parts(&self) -> (&str, &str, &str, &str) {
         let parts: Vec<&str> = self.0.split(':').collect();
         (parts[0], parts[1], parts[2], parts[3])
@@ -140,7 +140,7 @@ impl EdgeKind {
             EdgeKind::References => "references",
         }
     }
-    
+
     pub fn table_name(&self) -> &str {
         match self {
             EdgeKind::Calls => "edges_calls",
@@ -211,22 +211,19 @@ impl ProjectScope {
             nodes: std::collections::HashMap::new(),
         }
     }
-    
+
     pub fn add_node(&mut self, node: Node) {
         self.nodes.insert(node.node_id.to_string(), node);
     }
-    
+
     pub fn get_node(&self, node_id: &str) -> Option<&Node> {
         self.nodes.get(node_id)
     }
-    
+
     pub fn find_nodes_by_name(&self, name: &str) -> Vec<&Node> {
-        self.nodes
-            .values()
-            .filter(|n| n.name == name)
-            .collect()
+        self.nodes.values().filter(|n| n.name == name).collect()
     }
-    
+
     pub fn all_nodes(&self) -> impl Iterator<Item = &Node> {
         self.nodes.values()
     }
@@ -255,8 +252,12 @@ pub struct Config {
     pub search: SearchConfig,
 }
 
-fn default_version() -> u32 { 1 }
-fn default_db_path() -> String { ".spy-code/graph.db".to_string() }
+fn default_version() -> u32 {
+    1
+}
+fn default_db_path() -> String {
+    ".spy-code/graph.db".to_string()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -286,9 +287,15 @@ pub struct LanguageConfig {
     pub tsconfig: Option<String>,
 }
 
-fn default_enabled() -> bool { true }
-fn default_roots() -> Vec<String> { vec!["./".to_string()] }
-fn default_resolver() -> String { "builtin".to_string() }
+fn default_enabled() -> bool {
+    true
+}
+fn default_roots() -> Vec<String> {
+    vec!["./".to_string()]
+}
+fn default_resolver() -> String {
+    "builtin".to_string()
+}
 
 impl Default for LanguageConfig {
     fn default() -> Self {
@@ -334,8 +341,12 @@ pub struct IndexingConfig {
     pub fail_fast: bool,
 }
 
-fn default_max_file_size() -> u64 { 2048 }
-fn default_parallelism() -> ParallelismConfig { ParallelismConfig::Auto }
+fn default_max_file_size() -> u64 {
+    2048
+}
+fn default_parallelism() -> ParallelismConfig {
+    ParallelismConfig::Auto
+}
 
 impl Default for IndexingConfig {
     fn default() -> Self {
@@ -396,7 +407,9 @@ impl<'de> Deserialize<'de> for ParallelismConfig {
                 E: de::Error,
             {
                 if value == 0 {
-                    Err(E::custom("parallelism thread count must be greater than zero"))
+                    Err(E::custom(
+                        "parallelism thread count must be greater than zero",
+                    ))
                 } else {
                     Ok(ParallelismConfig::Threads(value as usize))
                 }
@@ -414,7 +427,9 @@ pub struct SearchConfig {
     pub fts_tokenizer: String,
 }
 
-fn default_tokenizer() -> String { "unicode61".to_string() }
+fn default_tokenizer() -> String {
+    "unicode61".to_string()
+}
 
 impl Default for SearchConfig {
     fn default() -> Self {
@@ -445,26 +460,26 @@ impl Default for Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_node_id_format() {
         let id = NodeId::new("src", "lib.rs", "_", "parse").unwrap();
         assert_eq!(id.as_str(), "src:lib.rs:_:parse");
     }
-    
+
     #[test]
     fn test_node_id_empty_to_underscore() {
         let id = NodeId::new("", "lib.rs", "", "parse").unwrap();
         assert_eq!(id.as_str(), "_:lib.rs:_:parse");
     }
-    
+
     #[test]
     fn test_node_id_max_length() {
         let long_name = "a".repeat(600);
         let result = NodeId::new(&long_name, "b", "c", "d");
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn test_node_id_parts() {
         let id = NodeId::new("src/foo", "bar.rs", "Baz", "qux").unwrap();

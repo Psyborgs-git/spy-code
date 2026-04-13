@@ -169,8 +169,7 @@ impl Indexer {
             let abs = workdir.join(&diff.path);
             match &diff.status {
                 FileChangeStatus::Deleted => {
-                    self.storage
-                        .delete_nodes_for_file(&abs.to_string_lossy())?;
+                    self.storage.delete_nodes_for_file(&abs.to_string_lossy())?;
                 }
                 FileChangeStatus::Renamed { old_path } => {
                     let old_abs = workdir.join(old_path);
@@ -230,15 +229,12 @@ impl Indexer {
                     continue;
                 }
 
-                for entry in WalkDir::new(&scan_root).follow_links(self.config.git.follow_symlinks) {
+                for entry in WalkDir::new(&scan_root).follow_links(self.config.git.follow_symlinks)
+                {
                     let entry = entry?;
                     let path = entry.path();
 
                     if entry.file_type().is_dir() {
-                        continue;
-                    }
-
-                    if !seen.insert(path.to_path_buf()) {
                         continue;
                     }
 
@@ -256,6 +252,10 @@ impl Indexer {
                         || detect_language(path) != Some(language)
                         || !self.should_index_path_with_config(root, path, &language_config)
                     {
+                        continue;
+                    }
+
+                    if !seen.insert(path.to_path_buf()) {
                         continue;
                     }
 
