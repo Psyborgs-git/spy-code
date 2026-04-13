@@ -428,7 +428,7 @@ mod tests {
         assert_eq!(Language::JavaScript.as_str(), "javascript");
         assert_eq!(NodeKind::Constant.as_str(), "constant");
         assert_eq!(EdgeKind::Imports.table_name(), "edges_imports");
-        assert_eq!(EdgeKind::Calls.to_string(), "calls");
+        assert_eq!(EdgeKind::Calls.as_str(), "calls");
     }
 
     #[test]
