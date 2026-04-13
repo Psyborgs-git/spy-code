@@ -119,21 +119,23 @@ impl Storage {
                 INSERT INTO nodes_fts(rowid, node_id, name, description)
                 SELECT rowid, node_id, name, description FROM nodes;
                 
-                CREATE TRIGGER nodes_ai AFTER INSERT ON nodes BEGIN
-                    INSERT INTO nodes_fts(rowid, node_id, name, description)
-                    VALUES (NEW.rowid, NEW.node_id, NEW.name, NEW.description);
-                END;
-                
-                CREATE TRIGGER nodes_ad AFTER DELETE ON nodes BEGIN
-                    DELETE FROM nodes_fts WHERE rowid = OLD.rowid;
-                END;
-                
-                CREATE TRIGGER nodes_au AFTER UPDATE ON nodes BEGIN
-                    DELETE FROM nodes_fts WHERE rowid = OLD.rowid;
-                    INSERT INTO nodes_fts(rowid, node_id, name, description)
-                    VALUES (NEW.rowid, NEW.node_id, NEW.name, NEW.description);
-                END;
-                "#,
+                 CREATE TRIGGER nodes_ai AFTER INSERT ON nodes BEGIN
+                     INSERT INTO nodes_fts(rowid, node_id, name, description)
+                     VALUES (NEW.rowid, NEW.node_id, NEW.name, NEW.description);
+                 END;
+                 
+                 CREATE TRIGGER nodes_ad AFTER DELETE ON nodes BEGIN
+                     INSERT INTO nodes_fts(nodes_fts, rowid, node_id, name, description)
+                     VALUES ('delete', OLD.rowid, OLD.node_id, OLD.name, OLD.description);
+                 END;
+                 
+                 CREATE TRIGGER nodes_au AFTER UPDATE ON nodes BEGIN
+                     INSERT INTO nodes_fts(nodes_fts, rowid, node_id, name, description)
+                     VALUES ('delete', OLD.rowid, OLD.node_id, OLD.name, OLD.description);
+                     INSERT INTO nodes_fts(rowid, node_id, name, description)
+                     VALUES (NEW.rowid, NEW.node_id, NEW.name, NEW.description);
+                 END;
+                 "#,
             )?;
         }
         
