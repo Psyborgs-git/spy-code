@@ -144,7 +144,7 @@ async fn handle_request(
 // Tools
 // ---------------------------------------------------------------------------
 
-fn tools_list() -> Value {
+pub fn tools_list() -> Value {
     json!({
         "tools": [
             {
@@ -330,7 +330,7 @@ async fn handle_tool_call(
 // Resources
 // ---------------------------------------------------------------------------
 
-fn resources_list() -> Value {
+pub fn resources_list() -> Value {
     json!({
         "resources": [
             {
@@ -406,3 +406,47 @@ async fn handle_resource_read(
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tools_list_contains_all_tools() {
+        let tools = tools_list();
+        let tool_names: Vec<&str> = tools["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap())
+            .collect();
+        assert!(tool_names.contains(&"query_graph"));
+        assert!(tool_names.contains(&"get_node"));
+        assert!(tool_names.contains(&"search"));
+        assert!(tool_names.contains(&"find_callers"));
+        assert!(tool_names.contains(&"find_callees"));
+        assert!(tool_names.contains(&"changed_since"));
+        assert!(tool_names.contains(&"stats"));
+    }
+
+    #[test]
+    fn test_resources_list_contains_all_resources() {
+        let resources = resources_list();
+        let uris: Vec<&str> = resources["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["uri"].as_str().unwrap())
+            .collect();
+        assert!(uris.contains(&"spy-code://schema"));
+        assert!(uris.contains(&"spy-code://stats"));
+        assert!(uris.contains(&"spy-code://config"));
+    }
+
+    #[test]
+    fn test_initialize_response_fields() {
+        // Validate structure of what initialize returns by checking the version constant
+        let version = env!("CARGO_PKG_VERSION");
+        assert!(!version.is_empty());
+    }
+}

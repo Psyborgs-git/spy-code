@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use spy_core::{Config, EdgeKind, NodeKind};
+use spy_core::{Config, EdgeKind, LanguageConfig, LanguagesConfig, NodeKind};
 use spy_indexer::Indexer;
 use spy_storage::Storage;
 use std::path::PathBuf;
@@ -82,7 +82,13 @@ async fn main() -> Result<()> {
 }
 
 fn cmd_init() -> Result<()> {
-    let config = Config::default();
+    let mut config = Config::default();
+    config.languages = LanguagesConfig {
+        rust: Some(LanguageConfig::default()),
+        python: Some(LanguageConfig::default()),
+        typescript: Some(LanguageConfig::default()),
+        go: Some(LanguageConfig::default()),
+    };
     let json = serde_json::to_string_pretty(&config)?;
     std::fs::write("spy.config.json", json)?;
     println!("Created spy.config.json");

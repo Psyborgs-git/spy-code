@@ -30,6 +30,7 @@ impl Storage {
     }
     
     fn migrate(&mut self) -> Result<()> {
+        self.conn.execute_batch("PRAGMA foreign_keys = ON;")?;
         self.conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS nodes (
@@ -65,7 +66,8 @@ impl Storage {
                 from_id     TEXT NOT NULL,
                 to_id       TEXT NOT NULL,
                 confidence  REAL NOT NULL DEFAULT 1.0,
-                PRIMARY KEY (from_id, to_id)
+                PRIMARY KEY (from_id, to_id),
+                FOREIGN KEY (from_id) REFERENCES nodes(node_id) ON DELETE CASCADE
             );
             
             CREATE INDEX IF NOT EXISTS idx_imports_to ON edges_imports(to_id);
@@ -74,7 +76,8 @@ impl Storage {
                 from_id     TEXT NOT NULL,
                 to_id       TEXT NOT NULL,
                 confidence  REAL NOT NULL DEFAULT 1.0,
-                PRIMARY KEY (from_id, to_id)
+                PRIMARY KEY (from_id, to_id),
+                FOREIGN KEY (from_id) REFERENCES nodes(node_id) ON DELETE CASCADE
             );
             
             CREATE INDEX IF NOT EXISTS idx_refs_to ON edges_references(to_id);
@@ -260,6 +263,20 @@ impl Storage {
     }
     
     pub fn delete_nodes_for_file(&mut self, file_path: &str) -> Result<()> {
+        // Delete stale edges before deleting nodes (also ensures cleanup even if FK cascade
+        // is not active on this SQLite build)
+        self.conn.execute(
+            "DELETE FROM edges_calls WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)",
+            params![file_path],
+        )?;
+        self.conn.execute(
+            "DELETE FROM edges_imports WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)",
+            params![file_path],
+        )?;
+        self.conn.execute(
+            "DELETE FROM edges_references WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)",
+            params![file_path],
+        )?;
         self.conn.execute(
             "DELETE FROM nodes WHERE file_path = ?1",
             params![file_path],
