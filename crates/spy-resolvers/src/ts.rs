@@ -254,7 +254,115 @@ fn extract_js_edges(ctx: &FileContext, scope: &ProjectScope) -> Result<Vec<Edge>
     let mut edges = Vec::new();
     let root = ctx.tree.root_node();
     walk_for_edges(&root, &ctx.source, ctx, scope, &mut edges)?;
+
+    // Emit Imports edges for ES module import statements.
+    // For each specifier name that resolves unambiguously to a project node in
+    // another file, create an edge from every node in the current file.
+    let current_file_str = ctx.path.to_string_lossy().to_string();
+    let imported_node_ids = collect_import_targets(&root, &ctx.source, ctx, scope);
+
+    if !imported_node_ids.is_empty() {
+        let file_node_ids: Vec<spy_core::NodeId> = scope
+            .all_nodes()
+            .filter(|n| n.file_path == current_file_str)
+            .map(|n| n.node_id.clone())
+            .collect();
+        for from_id in &file_node_ids {
+            for to_id in &imported_node_ids {
+                if from_id != to_id {
+                    edges.push(Edge {
+                        from_id: from_id.clone(),
+                        to_id: to_id.clone(),
+                        kind: EdgeKind::Imports,
+                        confidence: 0.7,
+                    });
+                }
+            }
+        }
+    }
+
     Ok(edges)
+}
+
+/// Walk import/export statements and collect node IDs of imported names that
+/// exist in the project scope.
+fn collect_import_targets(
+    root: &TSNode,
+    source: &[u8],
+    ctx: &FileContext,
+    scope: &ProjectScope,
+) -> Vec<spy_core::NodeId> {
+    let current_file_str = ctx.path.to_string_lossy().to_string();
+    let mut ids = Vec::new();
+    let mut cursor = root.walk();
+
+    for child in root.children(&mut cursor) {
+        // import { Foo, Bar } from './module'
+        // import DefaultExport from './module'
+        if child.kind() == "import_statement" {
+            let mut c2 = child.walk();
+            for part in child.children(&mut c2) {
+                match part.kind() {
+                    // import DefaultExport
+                    "identifier" => {
+                        let name = node_text(&part, source);
+                        resolve_import_name(name, &current_file_str, scope, &mut ids);
+                    }
+                    // import { Foo, Bar as B }
+                    "import_clause" | "named_imports" => {
+                        collect_import_specifiers(&part, source, &current_file_str, scope, &mut ids);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    ids
+}
+
+fn collect_import_specifiers(
+    node: &TSNode,
+    source: &[u8],
+    current_file: &str,
+    scope: &ProjectScope,
+    ids: &mut Vec<spy_core::NodeId>,
+) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "import_specifier" => {
+                // { Foo } or { Foo as LocalFoo }
+                let name = child
+                    .child_by_field_name("name")
+                    .map(|n| node_text(&n, source))
+                    .or_else(|| child.named_child(0).map(|n| node_text(&n, source)))
+                    .unwrap_or("");
+                resolve_import_name(name, current_file, scope, ids);
+            }
+            "identifier" => {
+                resolve_import_name(node_text(&child, source), current_file, scope, ids);
+            }
+            "named_imports" => {
+                collect_import_specifiers(&child, source, current_file, scope, ids);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn resolve_import_name(
+    name: &str,
+    current_file: &str,
+    scope: &ProjectScope,
+    ids: &mut Vec<spy_core::NodeId>,
+) {
+    if name.is_empty() {
+        return;
+    }
+    let candidates = scope.find_nodes_by_name(name);
+    if candidates.len() == 1 && candidates[0].file_path != current_file {
+        ids.push(candidates[0].node_id.clone());
+    }
 }
 
 fn walk_for_edges(

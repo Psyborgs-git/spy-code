@@ -18,6 +18,19 @@ impl Indexer {
     pub fn index(&mut self, root_path: &Path, full: bool) -> Result<IndexStats> {
         let mut stats = IndexStats::default();
 
+        // Resolve root_path to a clean absolute path so every stored file_path is
+        // absolute and consistent with the absolute paths returned by git.
+        let root_path = std::fs::canonicalize(root_path).unwrap_or_else(|_| {
+            if root_path.is_absolute() {
+                root_path.to_path_buf()
+            } else {
+                std::env::current_dir()
+                    .unwrap_or_default()
+                    .join(root_path)
+            }
+        });
+        let root_path = &root_path;
+
         // Config hash invalidation: force full re-index when config changes.
         let config_json = serde_json::to_string(&self.config).unwrap_or_default();
         let config_hash = blake3::hash(config_json.as_bytes()).to_hex().to_string();
@@ -256,6 +269,10 @@ impl Indexer {
                 if !self.is_language_enabled(lang) {
                     continue;
                 }
+                // Apply per-language roots and ignore patterns from config
+                if !self.is_file_allowed(path, root, lang) {
+                    continue;
+                }
                 let file_size = entry.metadata().map(|m| m.len()).unwrap_or(0);
                 let max_bytes = self.config.indexing.max_file_size_kb * 1024;
                 if file_size <= max_bytes {
@@ -265,6 +282,63 @@ impl Indexer {
         }
 
         Ok(files)
+    }
+
+    /// Returns `false` when `path` is excluded by the language config `roots`
+    /// or `ignore` patterns; `true` otherwise (allow-by-default).
+    fn is_file_allowed(&self, path: &Path, root: &Path, lang: Language) -> bool {
+        let lang_config = match lang {
+            Language::Rust => self.config.languages.rust.as_ref(),
+            Language::Python => self.config.languages.python.as_ref(),
+            Language::TypeScript | Language::JavaScript => {
+                self.config.languages.typescript.as_ref()
+            }
+            Language::Go => self.config.languages.go.as_ref(),
+        };
+
+        let Some(lc) = lang_config else {
+            return true;
+        };
+
+        // Compute path relative to the scan root for pattern matching.
+        let relative = path.strip_prefix(root).unwrap_or(path);
+        let relative_str = relative.to_string_lossy();
+
+        // roots: if any non-trivial roots are configured, the file must be
+        // under at least one of them (trivial root = "./" or ".").
+        let non_trivial_roots: Vec<&str> = lc
+            .roots
+            .iter()
+            .map(|r| r.as_str())
+            .filter(|r| *r != "./" && *r != "." && !r.is_empty())
+            .collect();
+
+        if !non_trivial_roots.is_empty() {
+            let under_root = non_trivial_roots.iter().any(|r| {
+                let normalized = r.trim_start_matches("./").trim_end_matches('/');
+                relative_str.starts_with(normalized)
+            });
+            if !under_root {
+                return false;
+            }
+        }
+
+        // ignore: skip the file if it matches any glob pattern.
+        for pattern in &lc.ignore {
+            if let Ok(p) = glob::Pattern::new(pattern) {
+                if p.matches(&relative_str) {
+                    return false;
+                }
+                // Also check against just the last component for simple names.
+                if let Some(file_name) = path.file_name() {
+                    if p.matches(&file_name.to_string_lossy()) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        true
     }
 
     fn is_language_enabled(&self, lang: Language) -> bool {

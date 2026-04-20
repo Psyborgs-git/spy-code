@@ -1,5 +1,5 @@
 use anyhow::Result;
-use spy_core::{Config, Language};
+use spy_core::{Config, EdgeKind, Language, LanguageConfig};
 use spy_indexer::{detect_language, Indexer};
 use spy_storage::Storage;
 use std::path::Path;
@@ -106,5 +106,163 @@ fn test_incremental_index_skips_unchanged() -> Result<()> {
         stats2.files_parsed, 0,
         "Incremental index should parse 0 unchanged files"
     );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Python imports and references edge extraction
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_python_imports_edges_across_files() -> Result<()> {
+    let root = fixtures_path("python_sample");
+    if !root.exists() {
+        return Ok(());
+    }
+
+    let (_dir, storage) = make_storage();
+    let mut indexer = Indexer::new(storage, Config::default());
+    let stats = indexer.index(&root, true)?;
+
+    // zoo.py imports `add`, `Animal`, `Dog` from sibling files
+    // → at least some import edges should have been extracted
+    assert!(
+        stats.edges_extracted > 0,
+        "Expected >0 edges (imports/calls), got {}",
+        stats.edges_extracted
+    );
+    Ok(())
+}
+
+#[test]
+fn test_python_imports_edges_stored() -> Result<()> {
+    let root = fixtures_path("python_sample");
+    if !root.exists() {
+        return Ok(());
+    }
+
+    let tmp = TempDir::new()?;
+    let db_path = tmp.path().join("graph.db");
+    {
+        let storage = Storage::open(&db_path)?;
+        let mut indexer = Indexer::new(storage, Config::default());
+        indexer.index(&root, true)?;
+    }
+
+    let storage = Storage::open(&db_path)?;
+
+    // Find all nodes named "add" (from math.py)
+    let results = storage.search_nodes("add", 10)?;
+    let add_node = results.iter().find(|(n, _)| n.name == "add");
+    assert!(add_node.is_some(), "Expected 'add' node to be indexed");
+
+    let add_id = add_node.unwrap().0.node_id.as_str().to_string();
+    let importers = storage.get_incoming_edges(&add_id, EdgeKind::Imports)?;
+    assert!(
+        !importers.is_empty(),
+        "Expected zoo.py nodes to import 'add' from math.py; got no import edges"
+    );
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Config roots and ignore
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_config_ignore_excludes_files() -> Result<()> {
+    let root = fixtures_path("python_sample");
+    if !root.exists() {
+        return Ok(());
+    }
+
+    // Configure Python to ignore zoo.py
+    let mut config = Config::default();
+    config.languages.python = Some(LanguageConfig {
+        enabled: true,
+        roots: vec!["./".to_string()],
+        ignore: vec!["zoo.py".to_string()],
+        resolver: "builtin".to_string(),
+        tsconfig: None,
+    });
+
+    let tmp = TempDir::new()?;
+    let db_path = tmp.path().join("graph.db");
+    let storage = Storage::open(&db_path)?;
+    let mut indexer = Indexer::new(storage, config);
+    indexer.index(&root, true)?;
+
+    let storage = Storage::open(&db_path)?;
+    // Zoo class and create_zoo should NOT be indexed
+    let results = storage.search_nodes("Zoo", 10)?;
+    let zoo_nodes: Vec<_> = results.iter().filter(|(n, _)| n.name == "Zoo").collect();
+    assert!(
+        zoo_nodes.is_empty(),
+        "Expected 'Zoo' to be excluded by ignore pattern but it was indexed"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_config_roots_restricts_scan() -> Result<()> {
+    let root = fixtures_path("python_sample");
+    if !root.exists() {
+        return Ok(());
+    }
+
+    // This test verifies that when we configure non-existent roots,
+    // no Python files from the fixture dir are indexed.
+    let mut config = Config::default();
+    config.languages.python = Some(LanguageConfig {
+        enabled: true,
+        roots: vec!["nonexistent_dir/".to_string()],
+        ignore: vec![],
+        resolver: "builtin".to_string(),
+        tsconfig: None,
+    });
+
+    let tmp = TempDir::new()?;
+    let db_path = tmp.path().join("graph.db");
+    let storage = Storage::open(&db_path)?;
+    let mut indexer = Indexer::new(storage, config);
+    let stats = indexer.index(&root, true)?;
+
+    assert_eq!(
+        stats.nodes_extracted, 0,
+        "Expected 0 Python nodes when roots restrict to nonexistent dir"
+    );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Path normalization: absolute paths stored consistently
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_indexed_file_paths_are_absolute() -> Result<()> {
+    let root = fixtures_path("python_sample");
+    if !root.exists() {
+        return Ok(());
+    }
+
+    let tmp = TempDir::new()?;
+    let db_path = tmp.path().join("graph.db");
+    let storage = Storage::open(&db_path)?;
+    let mut indexer = Indexer::new(storage, Config::default());
+    // Index using a relative-style path if the fixture path is absolute,
+    // otherwise use as-is; either way all stored paths must be absolute.
+    indexer.index(&root, true)?;
+
+    let storage = Storage::open(&db_path)?;
+    let files = storage.list_files()?;
+    assert!(!files.is_empty(), "Expected indexed files");
+    for f in &files {
+        assert!(
+            std::path::Path::new(f).is_absolute(),
+            "Stored file path should be absolute, got: {}",
+            f
+        );
+    }
     Ok(())
 }

@@ -121,8 +121,10 @@ async fn cmd_query(query_str: String, json: bool) -> Result<()> {
     let result = schema.execute(&query_str).await;
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
+        // Compact JSON for machine consumption
+        println!("{}", serde_json::to_string(&result)?);
     } else {
+        // Pretty-printed for human readability
         println!("{}", serde_json::to_string_pretty(&result)?);
     }
 
@@ -191,10 +193,37 @@ async fn cmd_callers(node_id: String, depth: i32) -> Result<()> {
     let config = load_config()?;
     let storage = Storage::open(&config.db_path)?;
 
-    let edges = storage.get_incoming_edges(&node_id, EdgeKind::Calls)?;
+    let depth = depth.max(1) as usize;
+
+    // BFS traversal up to `depth` hops
+    let mut all_edges = Vec::new();
+    let mut frontier = vec![node_id.clone()];
+    let mut visited = std::collections::HashSet::new();
+    visited.insert(node_id.clone());
+
+    for _ in 0..depth {
+        let mut next_frontier = Vec::new();
+        for nid in &frontier {
+            let edges = storage.get_incoming_edges(nid, EdgeKind::Calls)?;
+            for e in &edges {
+                let from = e.from_id.to_string();
+                if visited.insert(from.clone()) {
+                    next_frontier.push(from);
+                }
+                all_edges.push(e.clone());
+            }
+        }
+        if next_frontier.is_empty() {
+            break;
+        }
+        frontier = next_frontier;
+    }
 
     println!("Callers of {} (depth {}):", node_id, depth);
-    for edge in edges {
+    if all_edges.is_empty() {
+        println!("  (none)");
+    }
+    for edge in all_edges {
         println!("  {} (confidence: {:.2})", edge.from_id, edge.confidence);
     }
 
@@ -205,10 +234,37 @@ async fn cmd_callees(node_id: String, depth: i32) -> Result<()> {
     let config = load_config()?;
     let storage = Storage::open(&config.db_path)?;
 
-    let edges = storage.get_edges(&node_id, EdgeKind::Calls)?;
+    let depth = depth.max(1) as usize;
+
+    // BFS traversal up to `depth` hops
+    let mut all_edges = Vec::new();
+    let mut frontier = vec![node_id.clone()];
+    let mut visited = std::collections::HashSet::new();
+    visited.insert(node_id.clone());
+
+    for _ in 0..depth {
+        let mut next_frontier = Vec::new();
+        for nid in &frontier {
+            let edges = storage.get_edges(nid, EdgeKind::Calls)?;
+            for e in &edges {
+                let to = e.to_id.to_string();
+                if visited.insert(to.clone()) {
+                    next_frontier.push(to);
+                }
+                all_edges.push(e.clone());
+            }
+        }
+        if next_frontier.is_empty() {
+            break;
+        }
+        frontier = next_frontier;
+    }
 
     println!("Callees of {} (depth {}):", node_id, depth);
-    for edge in edges {
+    if all_edges.is_empty() {
+        println!("  (none)");
+    }
+    for edge in all_edges {
         println!("  {} (confidence: {:.2})", edge.to_id, edge.confidence);
     }
 

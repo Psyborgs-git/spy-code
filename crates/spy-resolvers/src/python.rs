@@ -43,6 +43,45 @@ impl Resolver for PythonResolver {
         let import_map = build_import_map(&root, &ctx.source);
 
         walk_for_edges(&root, &ctx.source, ctx, scope, &import_map, &mut edges)?;
+
+        // Emit Imports edges: for each name imported at module level that
+        // resolves unambiguously to a project node, create an edge from each
+        // node in the current file to that imported node.
+        let current_file_str = ctx.path.to_string_lossy().to_string();
+        let mut imported_node_ids: Vec<spy_core::NodeId> = Vec::new();
+        for alias in import_map.keys() {
+            let candidates = scope.find_nodes_by_name(alias);
+            if candidates.len() == 1 {
+                let target_file = &candidates[0].file_path;
+                // Only emit import edges for nodes in OTHER files
+                if target_file != &current_file_str {
+                    imported_node_ids.push(candidates[0].node_id.clone());
+                }
+            }
+        }
+        if !imported_node_ids.is_empty() {
+            let file_node_ids: Vec<spy_core::NodeId> = scope
+                .all_nodes()
+                .filter(|n| n.file_path == current_file_str)
+                .map(|n| n.node_id.clone())
+                .collect();
+            for from_id in &file_node_ids {
+                for to_id in &imported_node_ids {
+                    if from_id != to_id {
+                        edges.push(Edge {
+                            from_id: from_id.clone(),
+                            to_id: to_id.clone(),
+                            kind: EdgeKind::Imports,
+                            confidence: 0.7,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Emit References edges from functions to types used in their signatures.
+        walk_for_reference_edges(&root, &ctx.source, ctx, scope, "_", &mut edges)?;
+
         Ok(edges)
     }
 }
@@ -336,7 +375,10 @@ fn infer_containing_function(
         .unwrap_or(".");
     let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
 
+    // Walk upward to find the immediately-containing function, then continue
+    // past it to find a potential enclosing class_definition.
     let mut current = node.parent();
+    let mut func_name: Option<String> = None;
     let mut class_name = "_";
 
     while let Some(parent) = current {
@@ -344,14 +386,21 @@ fn infer_containing_function(
             if let Some(n) = parent.child_by_field_name("name") {
                 class_name = node_text(&n, source);
             }
+            // A class is the outermost scope we care about; stop here.
+            break;
         }
-        if parent.kind() == "function_definition" {
+        if parent.kind() == "function_definition" && func_name.is_none() {
+            // Record the innermost enclosing function but keep walking to find
+            // a possible parent class_definition.
             if let Some(name_node) = parent.child_by_field_name("name") {
-                let name = node_text(&name_node, source);
-                return Ok(Some(NodeId::new(dir, file, class_name, name)?));
+                func_name = Some(node_text(&name_node, source).to_string());
             }
         }
         current = parent.parent();
+    }
+
+    if let Some(name) = func_name {
+        return Ok(Some(NodeId::new(dir, file, class_name, &name)?));
     }
 
     Ok(None)
@@ -484,6 +533,121 @@ fn compute_hash(node: &TSNode, source: &[u8]) -> String {
 
 fn node_text<'a>(node: &TSNode, source: &'a [u8]) -> &'a str {
     node.utf8_text(source).unwrap_or("")
+}
+
+/// Walk the AST to emit `References` edges for type annotations in function
+/// signatures.  `current_class` tracks whether we are inside a class body.
+fn walk_for_reference_edges(
+    node: &TSNode,
+    source: &[u8],
+    ctx: &FileContext,
+    scope: &ProjectScope,
+    current_class: &str,
+    edges: &mut Vec<Edge>,
+) -> anyhow::Result<()> {
+    let dir = ctx
+        .path
+        .parent()
+        .and_then(|p| p.to_str())
+        .unwrap_or(".");
+    let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
+
+    match node.kind() {
+        "class_definition" => {
+            let class_name = node
+                .child_by_field_name("name")
+                .map(|n| node_text(&n, source))
+                .unwrap_or("_");
+            if let Some(body) = node.child_by_field_name("body") {
+                let mut cursor = body.walk();
+                for child in body.children(&mut cursor) {
+                    walk_for_reference_edges(&child, source, ctx, scope, class_name, edges)?;
+                }
+            }
+            return Ok(());
+        }
+        "function_definition" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                let func_name = node_text(&name_node, source);
+                if let Ok(from_id) = NodeId::new(dir, file, current_class, func_name) {
+                    // Return type annotation
+                    if let Some(ret) = node.child_by_field_name("return_type") {
+                        let raw = node_text(&ret, source);
+                        let type_name = raw.trim_start_matches("->").trim();
+                        emit_ref_if_in_scope(&from_id, type_name, ctx, scope, edges);
+                    }
+                    // Parameter type annotations
+                    if let Some(params) = node.child_by_field_name("parameters") {
+                        let mut cursor = params.walk();
+                        for param in params.children(&mut cursor) {
+                            if matches!(
+                                param.kind(),
+                                "typed_parameter" | "typed_default_parameter"
+                            ) {
+                                if let Some(type_node) = param.child_by_field_name("type") {
+                                    let type_name = node_text(&type_node, source);
+                                    emit_ref_if_in_scope(
+                                        &from_id, type_name, ctx, scope, edges,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Recurse into body for nested functions
+            if let Some(body) = node.child_by_field_name("body") {
+                let mut cursor = body.walk();
+                for child in body.children(&mut cursor) {
+                    walk_for_reference_edges(&child, source, ctx, scope, current_class, edges)?;
+                }
+            }
+            return Ok(());
+        }
+        _ => {}
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        walk_for_reference_edges(&child, source, ctx, scope, current_class, edges)?;
+    }
+    Ok(())
+}
+
+/// Emit a `References` edge from `from_id` to `type_name` if `type_name`
+/// resolves unambiguously to a node in the project scope (excluding
+/// primitive/builtin names and self-references).
+fn emit_ref_if_in_scope(
+    from_id: &NodeId,
+    type_name: &str,
+    ctx: &FileContext,
+    scope: &ProjectScope,
+    edges: &mut Vec<Edge>,
+) {
+    // Skip Python builtins and trivial annotations
+    const SKIP: &[&str] = &[
+        "None", "int", "str", "bool", "float", "bytes", "list", "dict", "set",
+        "tuple", "Any", "Optional", "Union", "List", "Dict", "Set", "Tuple",
+        "Type", "Callable", "Iterator", "Generator", "Iterable", "Sequence",
+        "Mapping", "ClassVar", "Final", "Literal", "NoReturn",
+    ];
+    let bare = type_name.split('[').next().unwrap_or(type_name).trim();
+    if bare.is_empty() || SKIP.contains(&bare) {
+        return;
+    }
+    let candidates = scope.find_nodes_by_name(bare);
+    if candidates.len() == 1 {
+        let to_id = &candidates[0].node_id;
+        // Avoid self-reference and only cross file references
+        if to_id != from_id && candidates[0].file_path != ctx.path.to_string_lossy().as_ref() {
+            edges.push(Edge {
+                from_id: from_id.clone(),
+                to_id: to_id.clone(),
+                kind: EdgeKind::References,
+                confidence: 1.0,
+            });
+        }
+    }
 }
 
 #[cfg(test)]

@@ -4,27 +4,39 @@
   "languages": {
     "rust": {
       "enabled": true,
-      "roots": ["./"],
+      "roots": [
+        "./"
+      ],
       "ignore": [],
-      "resolver": "builtin"
+      "resolver": "builtin",
+      "tsconfig": null
     },
     "python": {
       "enabled": true,
-      "roots": ["./"],
+      "roots": [
+        "./"
+      ],
       "ignore": [],
-      "resolver": "builtin"
+      "resolver": "builtin",
+      "tsconfig": null
     },
     "typescript": {
       "enabled": true,
-      "roots": ["./"],
+      "roots": [
+        "./"
+      ],
       "ignore": [],
-      "resolver": "builtin"
+      "resolver": "builtin",
+      "tsconfig": null
     },
     "go": {
       "enabled": true,
-      "roots": ["./"],
+      "roots": [
+        "./"
+      ],
       "ignore": [],
-      "resolver": "builtin"
+      "resolver": "builtin",
+      "tsconfig": null
     }
   },
   "git": {
