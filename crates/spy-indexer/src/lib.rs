@@ -18,6 +18,23 @@ impl Indexer {
     pub fn index(&mut self, root_path: &Path, full: bool) -> Result<IndexStats> {
         let mut stats = IndexStats::default();
 
+        // Config hash invalidation: force full re-index when config changes.
+        let config_json = serde_json::to_string(&self.config).unwrap_or_default();
+        let config_hash = blake3::hash(config_json.as_bytes()).to_hex().to_string();
+        let stored_config_hash = self.storage.get_meta("last_config_hash")?;
+        let full = if stored_config_hash.as_deref() != Some(config_hash.as_str()) {
+            true
+        } else {
+            full
+        };
+
+        // Capture current HEAD SHA once for all file records in this run.
+        let current_git_sha = if let Ok(Some(repo)) = GitRepo::discover(root_path) {
+            repo.current_sha()
+        } else {
+            None
+        };
+
         // Determine which files to parse (either all, or just the diff from git)
         let files_to_parse = if full {
             let all = self.discover_files(root_path)?;
@@ -56,11 +73,14 @@ impl Indexer {
                             language: lang.as_str().to_string(),
                             content_hash,
                             last_indexed: now,
-                            git_sha: None,
+                            git_sha: current_git_sha.clone(),
                         })?;
                     }
                     Err(e) => {
                         eprintln!("Failed to parse {}: {}", file_path.display(), e);
+                        if self.config.indexing.fail_fast {
+                            return Err(e);
+                        }
                         stats.files_failed += 1;
                     }
                 }
@@ -104,6 +124,9 @@ impl Indexer {
             }
         }
 
+        // Persist config hash so we can detect config changes on next run
+        self.storage.set_meta("last_config_hash", &config_hash)?;
+
         Ok(stats)
     }
 
@@ -125,6 +148,11 @@ impl Indexer {
         if self.config.git.enabled {
             if let Ok(Some(repo)) = GitRepo::discover(root_path) {
                 if let Some(last_sha) = self.storage.get_meta("last_git_sha")? {
+                    // Warn when working tree is dirty
+                    if repo.is_dirty() {
+                        eprintln!("Warning: working tree is dirty; indexed state may not match HEAD");
+                    }
+
                     // Strip the +dirty suffix before passing to git diff
                     let clean_sha = last_sha.trim_end_matches("+dirty").to_string();
 
@@ -180,7 +208,10 @@ impl Indexer {
                 }
                 FileChangeStatus::Added | FileChangeStatus::Modified => {
                     if detect_language(&abs).is_some() && abs.exists() {
-                        to_parse.push(abs);
+                        // Content-hash gating: skip if file hasn't actually changed
+                        if self.should_reparse(&abs)? {
+                            to_parse.push(abs);
+                        }
                     }
                 }
             }
@@ -206,14 +237,11 @@ impl Indexer {
         for entry in WalkDir::new(root).follow_links(self.config.git.follow_symlinks) {
             let entry = entry?;
             if entry.file_type().is_dir() {
-                let name = entry.file_name().to_string_lossy();
-                if ignore_dirs.iter().any(|d| *d == name.as_ref()) {
-                    // walkdir doesn't support skip-dir natively; we filter below
-                }
                 continue;
             }
 
-            // Skip files inside ignored directories
+            // Skip files inside ignored directories. WalkDir has no built-in skip-dir
+            // API, so we check each file's path ancestors against ignore_dirs.
             let path = entry.path();
             let in_ignored = path.ancestors().any(|a| {
                 a.file_name()
@@ -224,7 +252,10 @@ impl Indexer {
                 continue;
             }
 
-            if detect_language(path).is_some() {
+            if let Some(lang) = detect_language(path) {
+                if !self.is_language_enabled(lang) {
+                    continue;
+                }
                 let file_size = entry.metadata().map(|m| m.len()).unwrap_or(0);
                 let max_bytes = self.config.indexing.max_file_size_kb * 1024;
                 if file_size <= max_bytes {
@@ -234,6 +265,17 @@ impl Indexer {
         }
 
         Ok(files)
+    }
+
+    fn is_language_enabled(&self, lang: Language) -> bool {
+        match lang {
+            Language::Rust => self.config.languages.rust.as_ref().map(|c| c.enabled).unwrap_or(true),
+            Language::Python => self.config.languages.python.as_ref().map(|c| c.enabled).unwrap_or(true),
+            Language::TypeScript | Language::JavaScript => {
+                self.config.languages.typescript.as_ref().map(|c| c.enabled).unwrap_or(true)
+            }
+            Language::Go => self.config.languages.go.as_ref().map(|c| c.enabled).unwrap_or(true),
+        }
     }
 
     fn should_reparse(&self, path: &Path) -> Result<bool> {

@@ -70,16 +70,16 @@ Asserts: indexing finishes, node count within tolerance band, no panics, query l
 
 ## CI matrix
 
-GitHub Actions:
+GitHub Actions (`.github/workflows/ci.yml`):
 
 | Platform | Rust | Test scope |
 |---|---|---|
-| ubuntu-latest | stable | unit + integration + e2e |
+| ubuntu-latest | stable | fmt check + clippy + unit + integration |
 | ubuntu-latest | beta | unit + integration |
-| macos-latest | stable | unit + integration |
-| windows-latest | stable | unit + integration (skip e2e) |
+| macos-latest | stable | clippy + unit + integration |
+| windows-latest | stable | clippy + unit + integration |
 
-Cache `~/.cargo` and `target/`.
+A separate `release-check` job validates release builds on every push to `main`.
 
 ## Coverage target
 

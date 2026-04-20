@@ -264,7 +264,7 @@ impl From<spy_core::EdgeKind> for EdgeKindGQL {
 // GQL object types
 // ---------------------------------------------------------------------------
 
-#[derive(SimpleObject)]
+#[derive(SimpleObject, Clone)]
 pub struct Param {
     name: String,
     #[graphql(name = "type")]
@@ -280,7 +280,7 @@ impl From<spy_core::Param> for Param {
     }
 }
 
-#[derive(SimpleObject)]
+#[derive(SimpleObject, Clone)]
 pub struct Signature {
     params: Vec<Param>,
     returns: Option<String>,
@@ -295,7 +295,6 @@ impl From<spy_core::Signature> for Signature {
     }
 }
 
-#[derive(SimpleObject)]
 pub struct Node {
     id: String,
     kind: NodeKindGQL,
@@ -308,6 +307,69 @@ pub struct Node {
     end_line: i32,
     git_sha: Option<String>,
     renamed_from: Option<String>,
+}
+
+#[Object]
+impl Node {
+    async fn id(&self) -> &str { &self.id }
+    async fn kind(&self) -> NodeKindGQL { self.kind }
+    async fn name(&self) -> &str { &self.name }
+    async fn description(&self) -> Option<&str> { self.description.as_deref() }
+    async fn signatures(&self) -> Vec<Signature> { self.signatures.clone() }
+    async fn language(&self) -> LanguageGQL { self.language }
+    async fn file_path(&self) -> &str { &self.file_path }
+    async fn start_line(&self) -> i32 { self.start_line }
+    async fn end_line(&self) -> i32 { self.end_line }
+    async fn git_sha(&self) -> Option<&str> { self.git_sha.as_deref() }
+    async fn renamed_from(&self) -> Option<&str> { self.renamed_from.as_deref() }
+
+    async fn callers(&self, ctx: &Context<'_>, limit: Option<i32>) -> async_graphql::Result<Vec<Edge>> {
+        let storage = ctx.data::<Arc<Mutex<Storage>>>()?;
+        let storage = storage.lock().unwrap();
+        let limit = limit.unwrap_or(50) as usize;
+        let edges = collect_incoming_edges(&storage, &self.id, EdgeKind::Calls, 1)?;
+        Ok(edges.into_iter().take(limit).map(|e| e.into()).collect())
+    }
+
+    async fn callees(&self, ctx: &Context<'_>, limit: Option<i32>) -> async_graphql::Result<Vec<Edge>> {
+        let storage = ctx.data::<Arc<Mutex<Storage>>>()?;
+        let storage = storage.lock().unwrap();
+        let limit = limit.unwrap_or(50) as usize;
+        let edges = collect_outgoing_edges(&storage, &self.id, EdgeKind::Calls, 1)?;
+        Ok(edges.into_iter().take(limit).map(|e| e.into()).collect())
+    }
+
+    async fn importers(&self, ctx: &Context<'_>, limit: Option<i32>) -> async_graphql::Result<Vec<Edge>> {
+        let storage = ctx.data::<Arc<Mutex<Storage>>>()?;
+        let storage = storage.lock().unwrap();
+        let limit = limit.unwrap_or(50) as usize;
+        let edges = collect_incoming_edges(&storage, &self.id, EdgeKind::Imports, 1)?;
+        Ok(edges.into_iter().take(limit).map(|e| e.into()).collect())
+    }
+
+    async fn imports(&self, ctx: &Context<'_>, limit: Option<i32>) -> async_graphql::Result<Vec<Edge>> {
+        let storage = ctx.data::<Arc<Mutex<Storage>>>()?;
+        let storage = storage.lock().unwrap();
+        let limit = limit.unwrap_or(50) as usize;
+        let edges = collect_outgoing_edges(&storage, &self.id, EdgeKind::Imports, 1)?;
+        Ok(edges.into_iter().take(limit).map(|e| e.into()).collect())
+    }
+
+    async fn referenced_by(&self, ctx: &Context<'_>, limit: Option<i32>) -> async_graphql::Result<Vec<Edge>> {
+        let storage = ctx.data::<Arc<Mutex<Storage>>>()?;
+        let storage = storage.lock().unwrap();
+        let limit = limit.unwrap_or(50) as usize;
+        let edges = collect_incoming_edges(&storage, &self.id, EdgeKind::References, 1)?;
+        Ok(edges.into_iter().take(limit).map(|e| e.into()).collect())
+    }
+
+    async fn references(&self, ctx: &Context<'_>, limit: Option<i32>) -> async_graphql::Result<Vec<Edge>> {
+        let storage = ctx.data::<Arc<Mutex<Storage>>>()?;
+        let storage = storage.lock().unwrap();
+        let limit = limit.unwrap_or(50) as usize;
+        let edges = collect_outgoing_edges(&storage, &self.id, EdgeKind::References, 1)?;
+        Ok(edges.into_iter().take(limit).map(|e| e.into()).collect())
+    }
 }
 
 impl From<spy_core::Node> for Node {
@@ -334,12 +396,31 @@ impl From<spy_core::Node> for Node {
     }
 }
 
-#[derive(SimpleObject)]
 pub struct Edge {
     from_id: String,
     to_id: String,
     kind: EdgeKindGQL,
     confidence: f64,
+}
+
+#[Object]
+impl Edge {
+    async fn from_id(&self) -> &str { &self.from_id }
+    async fn to_id(&self) -> &str { &self.to_id }
+    async fn kind(&self) -> EdgeKindGQL { self.kind }
+    async fn confidence(&self) -> f64 { self.confidence }
+
+    async fn from(&self, ctx: &Context<'_>) -> async_graphql::Result<Option<Node>> {
+        let storage = ctx.data::<Arc<Mutex<Storage>>>()?;
+        let storage = storage.lock().unwrap();
+        Ok(storage.get_node(&self.from_id)?.map(Into::into))
+    }
+
+    async fn to(&self, ctx: &Context<'_>) -> async_graphql::Result<Option<Node>> {
+        let storage = ctx.data::<Arc<Mutex<Storage>>>()?;
+        let storage = storage.lock().unwrap();
+        Ok(storage.get_node(&self.to_id)?.map(Into::into))
+    }
 }
 
 impl From<spy_core::Edge> for Edge {

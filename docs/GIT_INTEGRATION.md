@@ -1,6 +1,6 @@
 # Git Integration
 
-Implemented in `crates/spy-git` using `gix`. Optional but on by default.
+Implemented in `crates/spy-git` using `std::process::Command` shelling out to `git`. Optional but on by default.
 
 ## Goals
 
@@ -37,7 +37,7 @@ query { changedSince(ref: "HEAD~10") { id name filePath } }
 
 Implementation:
 
-1. Resolve `ref` via `gix` to a commit SHA.
+1. Resolve `ref` via `git` to a commit SHA.
 2. Run `git diff --name-only <ref>..HEAD` for the set of changed files.
 3. Return all nodes whose `file_path` is in that set.
 
@@ -45,7 +45,7 @@ This is a file-granularity answer, not signature-granularity. A future enhanceme
 
 ## Rename detection
 
-`gix` exposes rename detection via similarity index. We use the default 50% similarity threshold. When triggered:
+Rename detection uses similarity index with a default 50% threshold. When triggered:
 
 - Old node IDs are NOT deleted immediately.
 - New node IDs are inserted with `renamed_from` pointing at the old ID.

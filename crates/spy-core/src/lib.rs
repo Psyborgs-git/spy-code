@@ -346,11 +346,45 @@ impl Default for IndexingConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone)]
 pub enum ParallelismConfig {
     Auto,
     Threads(usize),
+}
+
+impl serde::Serialize for ParallelismConfig {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            ParallelismConfig::Auto => s.serialize_str("auto"),
+            ParallelismConfig::Threads(n) => s.serialize_u64(*n as u64),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ParallelismConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = ParallelismConfig;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, r#""auto" or a positive integer"#)
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> std::result::Result<ParallelismConfig, E> {
+                if v == "auto" {
+                    Ok(ParallelismConfig::Auto)
+                } else {
+                    Err(E::custom(format!("unknown parallelism value: {}", v)))
+                }
+            }
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> std::result::Result<ParallelismConfig, E> {
+                Ok(ParallelismConfig::Threads(v as usize))
+            }
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> std::result::Result<ParallelismConfig, E> {
+                Ok(ParallelismConfig::Threads(v.max(0) as usize))
+            }
+        }
+        d.deserialize_any(Visitor)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

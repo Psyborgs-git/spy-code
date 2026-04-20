@@ -62,7 +62,7 @@ spy-code/
 - `tree-sitter` + per-language grammars
 - `async-graphql` for GraphQL server
 - `rusqlite` (bundled) for storage
-- `gix` for git
+- `std::process::Command` shelling out to `git`
 - `serde` / `serde_json` for config + MCP
 - `clap` for CLI
 - `blake3` for content hashing
