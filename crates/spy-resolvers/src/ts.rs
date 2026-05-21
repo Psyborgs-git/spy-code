@@ -46,11 +46,7 @@ fn extract_js_nodes(ctx: &FileContext) -> Result<Vec<Node>> {
     let mut nodes = Vec::new();
     let root = ctx.tree.root_node();
 
-    let dir = ctx
-        .path
-        .parent()
-        .and_then(|p| p.to_str())
-        .unwrap_or(".");
+    let dir = ctx.path.parent().and_then(|p| p.to_str()).unwrap_or(".");
     let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
 
     walk_nodes(&root, &ctx.source, dir, file, "_", &mut nodes, ctx)?;
@@ -268,7 +264,7 @@ fn walk_for_edges(
         "call_expression" => {
             if let Some(func_node) = node.child_by_field_name("function") {
                 let func_text = node_text(&func_node, source);
-                let bare = func_text.split('.').last().unwrap_or(func_text);
+                let bare = func_text.split('.').next_back().unwrap_or(func_text);
                 if let Some(from_id) = infer_containing_function(node, source, ctx)? {
                     let candidates = scope.find_nodes_by_name(bare);
                     if candidates.len() == 1 {
@@ -297,13 +293,20 @@ fn walk_for_edges(
                 if let Ok(from_id) = NodeId::new(dir, file, "_", class_name) {
                     let mut cursor = node.walk();
                     for child in node.children(&mut cursor) {
-                        if child.kind() == "class_heritage" || child.kind() == "extends_clause" || child.kind() == "implements_clause" {
+                        if child.kind() == "class_heritage"
+                            || child.kind() == "extends_clause"
+                            || child.kind() == "implements_clause"
+                        {
                             let mut handle_heritage_clause = |clause: &TSNode, kind: EdgeKind| {
                                 let mut c_cursor = clause.walk();
                                 for ext_node in clause.children(&mut c_cursor) {
-                                    if ext_node.kind() == "identifier" || ext_node.kind() == "type_identifier" || ext_node.kind() == "member_expression" {
+                                    if ext_node.kind() == "identifier"
+                                        || ext_node.kind() == "type_identifier"
+                                        || ext_node.kind() == "member_expression"
+                                    {
                                         let ext_name = node_text(&ext_node, source);
-                                        let bare_name = ext_name.split('.').last().unwrap_or(ext_name);
+                                        let bare_name =
+                                            ext_name.split('.').next_back().unwrap_or(ext_name);
                                         let candidates = scope.find_nodes_by_name(bare_name);
                                         if candidates.len() == 1 {
                                             edges.push(Edge {
@@ -323,7 +326,7 @@ fn walk_for_edges(
                                     }
                                 }
                             };
-                            
+
                             if child.kind() == "class_heritage" {
                                 let mut h_cursor = child.walk();
                                 for hc in child.children(&mut h_cursor) {
@@ -359,18 +362,17 @@ fn infer_containing_function(
     source: &[u8],
     ctx: &FileContext,
 ) -> Result<Option<NodeId>> {
-    let dir = ctx
-        .path
-        .parent()
-        .and_then(|p| p.to_str())
-        .unwrap_or(".");
+    let dir = ctx.path.parent().and_then(|p| p.to_str()).unwrap_or(".");
     let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
 
     let mut current = node.parent();
     let mut class_name = "_".to_string();
 
     while let Some(parent) = current {
-        if matches!(parent.kind(), "class_declaration" | "abstract_class_declaration" | "interface_declaration") {
+        if matches!(
+            parent.kind(),
+            "class_declaration" | "abstract_class_declaration" | "interface_declaration"
+        ) {
             if let Some(n) = parent.child_by_field_name("name") {
                 class_name = node_text(&n, source).to_string();
             }
@@ -491,13 +493,11 @@ mod tests {
     use std::path::Path;
 
     fn parse_ts(source: &[u8]) -> FileContext {
-        spy_parser::parse_file(Path::new("test.ts"), source.to_vec(), Language::TypeScript)
-            .unwrap()
+        spy_parser::parse_file(Path::new("test.ts"), source.to_vec(), Language::TypeScript).unwrap()
     }
 
     fn parse_js(source: &[u8]) -> FileContext {
-        spy_parser::parse_file(Path::new("test.js"), source.to_vec(), Language::JavaScript)
-            .unwrap()
+        spy_parser::parse_file(Path::new("test.js"), source.to_vec(), Language::JavaScript).unwrap()
     }
 
     #[test]
@@ -513,14 +513,20 @@ mod tests {
     fn test_ts_class() {
         let ctx = parse_ts(b"class Foo { bar(): void {} }");
         let nodes = TypeScriptResolver.extract_nodes(&ctx).unwrap();
-        assert!(nodes.iter().any(|n| n.name == "Foo" && n.kind == NodeKind::Class));
-        assert!(nodes.iter().any(|n| n.name == "bar" && n.kind == NodeKind::Function));
+        assert!(nodes
+            .iter()
+            .any(|n| n.name == "Foo" && n.kind == NodeKind::Class));
+        assert!(nodes
+            .iter()
+            .any(|n| n.name == "bar" && n.kind == NodeKind::Function));
     }
 
     #[test]
     fn test_js_arrow_function() {
         let ctx = parse_js(b"const add = (a, b) => a + b;");
         let nodes = JavaScriptResolver.extract_nodes(&ctx).unwrap();
-        assert!(nodes.iter().any(|n| n.name == "add" && n.kind == NodeKind::Function));
+        assert!(nodes
+            .iter()
+            .any(|n| n.name == "add" && n.kind == NodeKind::Function));
     }
 }

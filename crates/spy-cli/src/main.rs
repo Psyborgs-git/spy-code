@@ -137,7 +137,12 @@ async fn main() -> Result<()> {
         Commands::Index { full, path } => cmd_index(full, path)?,
         Commands::Query { query, json } => cmd_query(query, json).await?,
         Commands::Get { node_id } => cmd_get(node_id).await?,
-        Commands::Search { text, kind, semantic, hybrid } => cmd_search(text, kind, semantic, hybrid).await?,
+        Commands::Search {
+            text,
+            kind,
+            semantic,
+            hybrid,
+        } => cmd_search(text, kind, semantic, hybrid).await?,
         Commands::Callers { node_id, depth } => cmd_callers(node_id, depth).await?,
         Commands::Callees { node_id, depth } => cmd_callees(node_id, depth).await?,
         Commands::Changed { git_ref } => cmd_changed(git_ref).await?,
@@ -206,7 +211,10 @@ async fn cmd_get(node_id: String) -> Result<()> {
         println!("  ID: {}", node.node_id);
         println!("  Kind: {}", node.kind);
         println!("  Language: {}", node.language);
-        println!("  File: {}:{}:{}", node.file_path, node.start_line, node.end_line);
+        println!(
+            "  File: {}:{}:{}",
+            node.file_path, node.start_line, node.end_line
+        );
         if let Some(desc) = node.description {
             println!("  Description: {}", desc);
         }
@@ -226,7 +234,12 @@ async fn cmd_get(node_id: String) -> Result<()> {
     Ok(())
 }
 
-async fn cmd_search(text: String, kind: Option<String>, semantic: bool, hybrid: bool) -> Result<()> {
+async fn cmd_search(
+    text: String,
+    kind: Option<String>,
+    semantic: bool,
+    hybrid: bool,
+) -> Result<()> {
     let limit = 20;
     if semantic {
         let query = format!(
@@ -242,17 +255,22 @@ async fn cmd_search(text: String, kind: Option<String>, semantic: bool, hybrid: 
                     score
                 }}
             }}"#,
-            text.replace('"', "\\\""), limit
+            text.replace('"', "\\\""),
+            limit
         );
         let data = execute_query(&query).await?;
         let results = data["semanticSearch"]
             .as_array()
             .context("Invalid response format")?;
-        
+
         let filtered_results: Vec<_> = if let Some(ref kind_str) = kind {
-            results.iter().filter(|r| {
-                r["node"]["kind"].as_str().map(|k| k.to_lowercase()) == Some(kind_str.to_lowercase())
-            }).collect()
+            results
+                .iter()
+                .filter(|r| {
+                    r["node"]["kind"].as_str().map(|k| k.to_lowercase())
+                        == Some(kind_str.to_lowercase())
+                })
+                .collect()
         } else {
             results.iter().collect()
         };
@@ -284,17 +302,22 @@ async fn cmd_search(text: String, kind: Option<String>, semantic: bool, hybrid: 
                     score
                 }}
             }}"#,
-            text.replace('"', "\\\""), limit
+            text.replace('"', "\\\""),
+            limit
         );
         let data = execute_query(&query).await?;
         let results = data["hybridSearch"]
             .as_array()
             .context("Invalid response format")?;
-        
+
         let filtered_results: Vec<_> = if let Some(ref kind_str) = kind {
-            results.iter().filter(|r| {
-                r["node"]["kind"].as_str().map(|k| k.to_lowercase()) == Some(kind_str.to_lowercase())
-            }).collect()
+            results
+                .iter()
+                .filter(|r| {
+                    r["node"]["kind"].as_str().map(|k| k.to_lowercase())
+                        == Some(kind_str.to_lowercase())
+                })
+                .collect()
         } else {
             results.iter().collect()
         };
@@ -520,7 +543,9 @@ async fn cmd_bases(node_id: String) -> Result<()> {
         println!("Node not found: {}", node_id);
         return Ok(());
     }
-    let bases = node["bases"].as_array().context("Invalid response format")?;
+    let bases = node["bases"]
+        .as_array()
+        .context("Invalid response format")?;
     println!("Base classes/interfaces/traits of {}:", node_id);
     for base in bases {
         println!(
@@ -559,7 +584,9 @@ async fn cmd_derived(node_id: String) -> Result<()> {
         println!("Node not found: {}", node_id);
         return Ok(());
     }
-    let derived = node["derived"].as_array().context("Invalid response format")?;
+    let derived = node["derived"]
+        .as_array()
+        .context("Invalid response format")?;
     println!("Derived classes/structs implementing {}:", node_id);
     for der in derived {
         println!(
@@ -586,10 +613,13 @@ async fn cmd_diff_symbols(from_ref: String, to_ref: String) -> Result<()> {
                 changeType
             }}
         }}"#,
-        from_ref.replace('"', "\\\""), to_ref.replace('"', "\\\"")
+        from_ref.replace('"', "\\\""),
+        to_ref.replace('"', "\\\"")
     );
     let data = execute_query(&query).await?;
-    let diffs = data["diffSymbols"].as_array().context("Invalid response format")?;
+    let diffs = data["diffSymbols"]
+        .as_array()
+        .context("Invalid response format")?;
     println!("Symbol diffs between {} and {}:", from_ref, to_ref);
     for diff in diffs {
         println!(
@@ -614,10 +644,13 @@ async fn cmd_call_path(from_id: String, to_id: String) -> Result<()> {
                 confidence
             }}
         }}"#,
-        from_id.replace('"', "\\\""), to_id.replace('"', "\\\"")
+        from_id.replace('"', "\\\""),
+        to_id.replace('"', "\\\"")
     );
     let data = execute_query(&query).await?;
-    let path = data["callPath"].as_array().context("Invalid response format")?;
+    let path = data["callPath"]
+        .as_array()
+        .context("Invalid response format")?;
     println!("Shortest call path from {} to {}:", from_id, to_id);
     for edge in path {
         println!(
@@ -644,11 +677,17 @@ async fn cmd_impact(node_id: String, depth: i32) -> Result<()> {
                 startLine
             }}
         }}"#,
-        node_id.replace('"', "\\\""), depth
+        node_id.replace('"', "\\\""),
+        depth
     );
     let data = execute_query(&query).await?;
-    let symbols = data["impactedSymbols"].as_array().context("Invalid response format")?;
-    println!("Downstream impacted symbols for {} (depth {}):", node_id, depth);
+    let symbols = data["impactedSymbols"]
+        .as_array()
+        .context("Invalid response format")?;
+    println!(
+        "Downstream impacted symbols for {} (depth {}):",
+        node_id, depth
+    );
     for node in symbols {
         println!(
             "  {} ({}) - {} [{}:{}]",
@@ -675,7 +714,9 @@ async fn cmd_dependencies() -> Result<()> {
         }
     }"#;
     let data = execute_query(query).await?;
-    let deps = data["projectDependencies"].as_array().context("Invalid response format")?;
+    let deps = data["projectDependencies"]
+        .as_array()
+        .context("Invalid response format")?;
     println!("External project dependencies:");
     for dep in deps {
         println!(
@@ -704,7 +745,9 @@ async fn cmd_active_context() -> Result<()> {
         }
     }"#;
     let data = execute_query(query).await?;
-    let active = data["activeContext"].as_array().context("Invalid response format")?;
+    let active = data["activeContext"]
+        .as_array()
+        .context("Invalid response format")?;
     println!("Active workspace context (nodes in modified files):");
     for node in active {
         println!(

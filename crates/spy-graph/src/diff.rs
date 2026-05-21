@@ -1,7 +1,5 @@
 use async_graphql::*;
-use spy_core::{Node, Language};
-use spy_parser;
-use spy_resolvers;
+use spy_core::{Language, Node};
 use std::path::Path;
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
@@ -25,14 +23,19 @@ fn format_signature(node: &Node) -> String {
         return "()".to_string();
     }
     let sig = &node.signatures[0];
-    let params = sig.params.iter().map(|p| {
-        if let Some(t) = &p.type_ {
-            format!("{}: {}", p.name, t)
-        } else {
-            p.name.clone()
-        }
-    }).collect::<Vec<_>>().join(", ");
-    
+    let params = sig
+        .params
+        .iter()
+        .map(|p| {
+            if let Some(t) = &p.type_ {
+                format!("{}: {}", p.name, t)
+            } else {
+                p.name.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
     if let Some(ret) = &sig.returns {
         format!("({}) -> {}", params, ret)
     } else {
@@ -44,26 +47,26 @@ pub fn compute_diff(
     path: &Path,
     language: Language,
     old_source: &[u8],
-    new_source: &[u8]
+    new_source: &[u8],
 ) -> anyhow::Result<Vec<SignatureDiff>> {
     let resolver = spy_resolvers::get_resolver(language)
         .ok_or_else(|| anyhow::anyhow!("Unsupported language"))?;
-        
+
     let old_ctx = spy_parser::parse_file(path, old_source.to_vec(), language)?;
     let new_ctx = spy_parser::parse_file(path, new_source.to_vec(), language)?;
-    
+
     let old_nodes = resolver.extract_nodes(&old_ctx)?;
     let new_nodes = resolver.extract_nodes(&new_ctx)?;
-    
+
     let mut diffs = Vec::new();
-    
+
     for new_node in &new_nodes {
         let old_match = old_nodes.iter().find(|n| n.node_id == new_node.node_id);
-        
+
         if let Some(old_node) = old_match {
             let old_sig = format_signature(old_node);
             let new_sig = format_signature(new_node);
-            
+
             let change_type = if old_sig != new_sig {
                 ChangeType::SignatureModified
             } else if old_node.content_hash != new_node.content_hash {
@@ -71,7 +74,7 @@ pub fn compute_diff(
             } else {
                 continue;
             };
-            
+
             diffs.push(SignatureDiff {
                 change_type,
                 name: new_node.name.clone(),
@@ -87,7 +90,7 @@ pub fn compute_diff(
             });
         }
     }
-    
+
     for old_node in &old_nodes {
         let new_match = new_nodes.iter().find(|n| n.node_id == old_node.node_id);
         if new_match.is_none() {
@@ -99,6 +102,6 @@ pub fn compute_diff(
             });
         }
     }
-    
+
     Ok(diffs)
 }

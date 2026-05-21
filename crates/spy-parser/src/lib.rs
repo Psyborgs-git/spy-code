@@ -59,11 +59,7 @@ mod tests {
     #[test]
     fn test_parse_typescript() -> Result<()> {
         let source = b"function greet(): void {}";
-        let ctx = parse_file(
-            Path::new("test.ts"),
-            source.to_vec(),
-            Language::TypeScript,
-        )?;
+        let ctx = parse_file(Path::new("test.ts"), source.to_vec(), Language::TypeScript)?;
         assert_eq!(ctx.language, Language::TypeScript);
         assert!(ctx.tree.root_node().child_count() > 0);
         Ok(())
@@ -72,11 +68,7 @@ mod tests {
     #[test]
     fn test_parse_javascript() -> Result<()> {
         let source = b"function foo() {}";
-        let ctx = parse_file(
-            Path::new("test.js"),
-            source.to_vec(),
-            Language::JavaScript,
-        )?;
+        let ctx = parse_file(Path::new("test.js"), source.to_vec(), Language::JavaScript)?;
         assert_eq!(ctx.language, Language::JavaScript);
         assert!(ctx.tree.root_node().child_count() > 0);
         Ok(())
@@ -91,4 +83,3 @@ mod tests {
         Ok(())
     }
 }
-

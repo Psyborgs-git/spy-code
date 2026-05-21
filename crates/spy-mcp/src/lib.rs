@@ -70,8 +70,7 @@ pub async fn run_mcp_server(config_path: &Path) -> Result<()> {
         .context("Failed to read config.  Run 'spy-code init' first.")?;
     let config: Config = serde_json::from_str(&config_str)?;
 
-    let storage = Storage::open(&config.db_path)
-        .context("Failed to open database")?;
+    let storage = Storage::open(&config.db_path).context("Failed to open database")?;
     let storage = Arc::new(Mutex::new(storage));
 
     let schema = spy_graph::create_schema(Arc::clone(&storage));
@@ -275,7 +274,9 @@ async fn handle_tool_call(
             if let Some(k) = kind_filter {
                 results.retain(|(n, _)| n.kind.as_str() == k);
             }
-            Ok(json!({ "content": [{ "type": "text", "text": serde_json::to_string(&results.iter().map(|(n, s)| json!({ "node_id": n.node_id.as_str(), "name": &n.name, "kind": n.kind.as_str(), "score": s })).collect::<Vec<_>>())? }] }))
+            Ok(
+                json!({ "content": [{ "type": "text", "text": serde_json::to_string(&results.iter().map(|(n, s)| json!({ "node_id": n.node_id.as_str(), "name": &n.name, "kind": n.kind.as_str(), "score": s })).collect::<Vec<_>>())? }] }),
+            )
         }
 
         "find_callers" => {
@@ -285,7 +286,9 @@ async fn handle_tool_call(
                 args.get("depth").and_then(|v| v.as_i64()).unwrap_or(1)
             );
             let result = schema.execute(&gql).await;
-            Ok(json!({ "content": [{ "type": "text", "text": serde_json::to_value(&result)?.to_string() }] }))
+            Ok(
+                json!({ "content": [{ "type": "text", "text": serde_json::to_value(&result)?.to_string() }] }),
+            )
         }
 
         "find_callees" => {
@@ -295,7 +298,9 @@ async fn handle_tool_call(
                 args.get("depth").and_then(|v| v.as_i64()).unwrap_or(1)
             );
             let result = schema.execute(&gql).await;
-            Ok(json!({ "content": [{ "type": "text", "text": serde_json::to_value(&result)?.to_string() }] }))
+            Ok(
+                json!({ "content": [{ "type": "text", "text": serde_json::to_value(&result)?.to_string() }] }),
+            )
         }
 
         "changed_since" => {
@@ -314,12 +319,16 @@ async fn handle_tool_call(
                 .map(|p| p.to_string_lossy().into_owned())
                 .collect();
             let nodes = storage.lock().unwrap().get_nodes_for_files(&path_strings)?;
-            Ok(json!({ "content": [{ "type": "text", "text": serde_json::to_string(&nodes.iter().map(|n| json!({ "node_id": n.node_id.as_str(), "name": &n.name, "file_path": &n.file_path })).collect::<Vec<_>>())? }] }))
+            Ok(
+                json!({ "content": [{ "type": "text", "text": serde_json::to_string(&nodes.iter().map(|n| json!({ "node_id": n.node_id.as_str(), "name": &n.name, "file_path": &n.file_path })).collect::<Vec<_>>())? }] }),
+            )
         }
 
         "stats" => {
             let stats = storage.lock().unwrap().get_stats()?;
-            Ok(json!({ "content": [{ "type": "text", "text": serde_json::to_string(&json!({ "node_count": stats.node_count, "edge_count": stats.edge_count, "file_count": stats.file_count, "last_git_sha": stats.last_git_sha }))? }] }))
+            Ok(
+                json!({ "content": [{ "type": "text", "text": serde_json::to_string(&json!({ "node_count": stats.node_count, "edge_count": stats.edge_count, "file_count": stats.file_count, "last_git_sha": stats.last_git_sha }))? }] }),
+            )
         }
 
         other => anyhow::bail!("Unknown tool: {}", other),
@@ -393,16 +402,13 @@ async fn handle_resource_read(
                 }]
             }))
         }
-        "spy-code://config" => {
-            Ok(json!({
-                "contents": [{
-                    "uri": uri,
-                    "mimeType": "application/json",
-                    "text": serde_json::to_string_pretty(config)?
-                }]
-            }))
-        }
+        "spy-code://config" => Ok(json!({
+            "contents": [{
+                "uri": uri,
+                "mimeType": "application/json",
+                "text": serde_json::to_string_pretty(config)?
+            }]
+        })),
         other => anyhow::bail!("Unknown resource URI: {}", other),
     }
 }
-

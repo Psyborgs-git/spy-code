@@ -1,10 +1,10 @@
 use async_graphql::{Context, EmptyMutation, EmptySubscription, Object, Schema, SimpleObject};
-use spy_core::{EdgeKind, NodeKind, Language};
+use spy_core::{EdgeKind, Language, NodeKind};
 use spy_storage::Storage;
-use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
-mod tfidf;
+use std::sync::{Arc, Mutex};
 mod diff;
+mod tfidf;
 
 pub type SpySchema = Schema<QueryRoot, EmptyMutation, EmptySubscription>;
 
@@ -117,7 +117,11 @@ impl QueryRoot {
         if let Ok(Some(repo)) = spy_git::GitRepo::discover(&repo_root) {
             if let Ok(files) = repo.get_active_files() {
                 for file_path in files {
-                    let rel_path = file_path.strip_prefix(repo.workdir()).unwrap_or(&file_path).to_string_lossy().to_string();
+                    let rel_path = file_path
+                        .strip_prefix(repo.workdir())
+                        .unwrap_or(&file_path)
+                        .to_string_lossy()
+                        .to_string();
                     if let Ok(nodes) = storage.get_all_nodes() {
                         for node in nodes {
                             if node.file_path == rel_path {
@@ -141,20 +145,28 @@ impl QueryRoot {
     ) -> async_graphql::Result<Vec<SearchResult>> {
         let state = ctx.data::<Arc<GraphState>>()?;
         let limit = limit.unwrap_or(20) as usize;
-        
-        let index = state.tfidf.get_or_try_init(|| async {
-            let nodes = {
-                let storage = state.storage.lock().unwrap();
-                storage.get_all_nodes().map_err(|e| async_graphql::Error::new(e.to_string()))?
-            };
-            Ok::<_, async_graphql::Error>(Arc::new(tfidf::TfIdfIndex::build(nodes)))
-        }).await?;
-        
+
+        let index = state
+            .tfidf
+            .get_or_try_init(|| async {
+                let nodes = {
+                    let storage = state.storage.lock().unwrap();
+                    storage
+                        .get_all_nodes()
+                        .map_err(|e| async_graphql::Error::new(e.to_string()))?
+                };
+                Ok::<_, async_graphql::Error>(Arc::new(tfidf::TfIdfIndex::build(nodes)))
+            })
+            .await?;
+
         let results = index.search(&query, limit);
-        Ok(results.into_iter().map(|(n, score)| SearchResult {
-            node: n.into(),
-            score,
-        }).collect())
+        Ok(results
+            .into_iter()
+            .map(|(n, score)| SearchResult {
+                node: n.into(),
+                score,
+            })
+            .collect())
     }
 
     #[graphql(name = "hybridSearch")]
@@ -166,50 +178,58 @@ impl QueryRoot {
     ) -> async_graphql::Result<Vec<SearchResult>> {
         let state = ctx.data::<Arc<GraphState>>()?;
         let limit = limit.unwrap_or(20) as usize;
-        
+
         let fts5_results = {
             let storage = state.storage.lock().unwrap();
-            storage.search_nodes(&query, limit * 2)
+            storage
+                .search_nodes(&query, limit * 2)
                 .map_err(|e| async_graphql::Error::new(e.to_string()))?
         };
-        
-        let index = state.tfidf.get_or_try_init(|| async {
-            let nodes = {
-                let storage = state.storage.lock().unwrap();
-                storage.get_all_nodes().map_err(|e| async_graphql::Error::new(e.to_string()))?
-            };
-            Ok::<_, async_graphql::Error>(Arc::new(tfidf::TfIdfIndex::build(nodes)))
-        }).await?;
-        
+
+        let index = state
+            .tfidf
+            .get_or_try_init(|| async {
+                let nodes = {
+                    let storage = state.storage.lock().unwrap();
+                    storage
+                        .get_all_nodes()
+                        .map_err(|e| async_graphql::Error::new(e.to_string()))?
+                };
+                Ok::<_, async_graphql::Error>(Arc::new(tfidf::TfIdfIndex::build(nodes)))
+            })
+            .await?;
+
         let tfidf_results = index.search(&query, limit * 2);
-        
+
         use std::collections::HashMap;
         let mut rrf_scores: HashMap<String, (spy_core::Node, f64)> = HashMap::new();
-        
+
         for (rank, (node, _)) in fts5_results.into_iter().enumerate() {
             let id = node.node_id.to_string();
             let score = 1.0 / (60.0 + rank as f64);
             let entry = rrf_scores.entry(id).or_insert((node, 0.0));
             entry.1 += score;
         }
-        
+
         for (rank, (node, _)) in tfidf_results.into_iter().enumerate() {
             let id = node.node_id.to_string();
             let score = 1.0 / (60.0 + rank as f64);
             let entry = rrf_scores.entry(id).or_insert((node, 0.0));
             entry.1 += score;
         }
-        
+
         let mut combined: Vec<(spy_core::Node, f64)> = rrf_scores.into_values().collect();
         combined.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         combined.truncate(limit);
-        
-        Ok(combined.into_iter().map(|(n, score)| SearchResult {
-            node: n.into(),
-            score,
-        }).collect())
-    }
 
+        Ok(combined
+            .into_iter()
+            .map(|(n, score)| SearchResult {
+                node: n.into(),
+                score,
+            })
+            .collect())
+    }
 
     #[graphql(name = "diffSymbols")]
     async fn diff_symbols(
@@ -218,23 +238,26 @@ impl QueryRoot {
         from_ref: String,
         to_ref: String,
     ) -> async_graphql::Result<Vec<diff::SignatureDiff>> {
+        use spy_core::Language;
         use spy_git::GitRepo;
         use std::path::Path;
-        use spy_core::Language;
 
         let _state = ctx.data::<Arc<GraphState>>()?;
-        
-        let repo = GitRepo::discover(Path::new(".")).map_err(|e| async_graphql::Error::new(e.to_string()))?
+
+        let repo = GitRepo::discover(Path::new("."))
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?
             .ok_or_else(|| async_graphql::Error::new("Not in a git repository"))?;
 
         // 1. Get changed files
-        let diffs = repo.diff_files_since(&from_ref).map_err(|e| async_graphql::Error::new(e.to_string()))?;
-        
+        let diffs = repo
+            .diff_files_since(&from_ref)
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+
         let mut all_diffs = Vec::new();
-        
+
         for file_diff in diffs {
             let path = file_diff.path.clone();
-            
+
             // Detect language
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
             let lang = match ext {
@@ -249,16 +272,19 @@ impl QueryRoot {
             let old_src = repo.cat_file_at_ref(&from_ref, &path).unwrap_or_default();
             let new_src = repo.cat_file_at_ref(&to_ref, &path).unwrap_or_default();
 
-            if old_src.is_empty() && new_src.is_empty() { continue; }
+            if old_src.is_empty() && new_src.is_empty() {
+                continue;
+            }
 
-            if let Ok(file_diffs) = diff::compute_diff(&path, lang, old_src.as_bytes(), new_src.as_bytes()) {
+            if let Ok(file_diffs) =
+                diff::compute_diff(&path, lang, old_src.as_bytes(), new_src.as_bytes())
+            {
                 all_diffs.extend(file_diffs);
             }
         }
-        
+
         Ok(all_diffs)
     }
-
 
     #[graphql(name = "callPath")]
     async fn call_path(
@@ -269,8 +295,9 @@ impl QueryRoot {
     ) -> async_graphql::Result<Vec<Edge>> {
         let state = ctx.data::<Arc<GraphState>>()?;
         let storage = state.storage.lock().unwrap();
-        
-        let path = storage.find_shortest_path(&source_node_id, &target_node_id, spy_core::EdgeKind::Calls)
+
+        let path = storage
+            .find_shortest_path(&source_node_id, &target_node_id, spy_core::EdgeKind::Calls)
             .map_err(|e| async_graphql::Error::new(e.to_string()))?;
         Ok(path.into_iter().map(|e| e.into()).collect())
     }
@@ -285,10 +312,11 @@ impl QueryRoot {
         let depth = max_depth.unwrap_or(10);
         let state = ctx.data::<Arc<GraphState>>()?;
         let storage = state.storage.lock().unwrap();
-        
-        let edges = storage.get_incoming_edges_transitive(&node_id, spy_core::EdgeKind::Calls, depth)
+
+        let edges = storage
+            .get_incoming_edges_transitive(&node_id, spy_core::EdgeKind::Calls, depth)
             .map_err(|e| async_graphql::Error::new(e.to_string()))?;
-            
+
         let mut nodes: Vec<Node> = Vec::new();
         // Since we want impacted symbols, we look at the 'from' side of the incoming calls
         for edge in edges {
@@ -296,28 +324,30 @@ impl QueryRoot {
                 nodes.push(node.into());
             }
         }
-        
+
         // Remove duplicates since multiple call paths could go through the same node
         let mut unique_nodes = std::collections::HashMap::new();
         for n in nodes {
             unique_nodes.insert(n.id.clone(), n);
         }
-        
+
         Ok(unique_nodes.into_values().collect())
     }
 
-
     #[graphql(name = "projectDependencies")]
-    async fn project_dependencies(
-        &self,
-        ctx: &Context<'_>,
-    ) -> async_graphql::Result<Vec<Node>> {
+    async fn project_dependencies(&self, ctx: &Context<'_>) -> async_graphql::Result<Vec<Node>> {
         let state = ctx.data::<Arc<GraphState>>()?;
         let storage = state.storage.lock().unwrap();
-        
+
         // Return all Dependency nodes
-        let nodes = storage.get_all_nodes().map_err(|e| async_graphql::Error::new(e.to_string()))?;
-        Ok(nodes.into_iter().filter(|n| n.kind == spy_core::NodeKind::Dependency).map(|n| n.into()).collect())
+        let nodes = storage
+            .get_all_nodes()
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        Ok(nodes
+            .into_iter()
+            .filter(|n| n.kind == spy_core::NodeKind::Dependency)
+            .map(|n| n.into())
+            .collect())
     }
 
     async fn files(&self, ctx: &Context<'_>) -> async_graphql::Result<Vec<String>> {
@@ -365,7 +395,7 @@ impl QueryRoot {
         let storage = state.storage.lock().unwrap();
 
         // 1. Fetch nodes for this file from storage
-        let nodes = storage.get_nodes_for_files(&[file_path.clone()])?;
+        let nodes = storage.get_nodes_for_files(std::slice::from_ref(&file_path))?;
 
         // 2. Read the file contents from disk
         let file_content = std::fs::read_to_string(&file_path)
@@ -404,12 +434,12 @@ impl QueryRoot {
 // ---------------------------------------------------------------------------
 
 fn matches_kind(node_kind: &NodeKind, gql_kind: &NodeKindGQL) -> bool {
-    match (node_kind, gql_kind) {
-        (NodeKind::Function, NodeKindGQL::Function) => true,
-        (NodeKind::Class, NodeKindGQL::Class) => true,
-        (NodeKind::Constant, NodeKindGQL::Constant) => true,
-        _ => false,
-    }
+    matches!(
+        (node_kind, gql_kind),
+        (NodeKind::Function, NodeKindGQL::Function)
+            | (NodeKind::Class, NodeKindGQL::Class)
+            | (NodeKind::Constant, NodeKindGQL::Constant)
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -581,21 +611,24 @@ impl Node {
         let state = ctx.data::<Arc<GraphState>>()?;
         let storage = state.storage.lock().unwrap();
 
-        let all_nodes = storage.get_all_nodes().map_err(|e| async_graphql::Error::new(e.to_string()))?;
+        let all_nodes = storage
+            .get_all_nodes()
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
         let mut associated_tests = Vec::new();
         let target_lower = self.name.to_lowercase();
-        
+
         for node in all_nodes {
             if node.kind == spy_core::NodeKind::Function {
                 let node_name_lower = node.name.to_lowercase();
-                if node_name_lower.contains("test") {
-                    if node_name_lower.contains(&target_lower) || node.file_path.contains("test") {
-                        associated_tests.push(node.into());
-                    }
+                if node_name_lower.contains("test")
+                    && (node_name_lower.contains(&target_lower)
+                        || node.file_path.contains("test"))
+                {
+                    associated_tests.push(node.into());
                 }
             }
         }
-        
+
         Ok(associated_tests)
     }
 
@@ -664,8 +697,7 @@ fn get_line_coverage(file_path: &str, start_line: i32, end_line: i32) -> Option<
 
                 for line in content.lines() {
                     let line = line.trim();
-                    if line.starts_with("SF:") {
-                        let sf_path = &line[3..];
+                    if let Some(sf_path) = line.strip_prefix("SF:") {
                         in_file = sf_path.contains(file_path) || file_path.contains(sf_path);
                     } else if in_file && line.starts_with("DA:") {
                         let parts: Vec<&str> = line[3..].split(',').collect();
@@ -776,7 +808,11 @@ fn read_file_snippet(file_path: &str, start_line: i32, end_line: i32) -> std::io
     Ok(snippet_lines.join("\n"))
 }
 
-fn skeletonize(file_content: &str, language: spy_core::Language, functions: &[spy_core::Node]) -> String {
+fn skeletonize(
+    file_content: &str,
+    language: spy_core::Language,
+    functions: &[spy_core::Node],
+) -> String {
     let mut lines: Vec<String> = file_content.lines().map(|s| s.to_string()).collect();
 
     // Sort functions by start_line descending to avoid index shifting issues
@@ -795,7 +831,10 @@ fn skeletonize(file_content: &str, language: spy_core::Language, functions: &[sp
             spy_core::Language::Python => {
                 if func.end_line > func.start_line {
                     let first_line = &lines[start_idx];
-                    let indent = first_line.chars().take_while(|c| c.is_whitespace()).collect::<String>();
+                    let indent = first_line
+                        .chars()
+                        .take_while(|c| c.is_whitespace())
+                        .collect::<String>();
                     let placeholder = format!("{}    pass", indent);
                     lines.splice((start_idx + 1)..=end_idx, std::iter::once(placeholder));
                 }
@@ -803,7 +842,10 @@ fn skeletonize(file_content: &str, language: spy_core::Language, functions: &[sp
             _ => {
                 if func.end_line > func.start_line + 1 {
                     let first_line = &lines[start_idx];
-                    let indent = first_line.chars().take_while(|c| c.is_whitespace()).collect::<String>();
+                    let indent = first_line
+                        .chars()
+                        .take_while(|c| c.is_whitespace())
+                        .collect::<String>();
                     let placeholder = format!("{}    // ...", indent);
                     lines.splice((start_idx + 1)..end_idx, std::iter::once(placeholder));
                 }
@@ -835,7 +877,8 @@ mod tests {
 
     #[test]
     fn test_skeletonize_rust() {
-        let content = "fn add(a: i32, b: i32) -> i32 {\n    let sum = a + b;\n    sum\n}\n\nfn sub() {}";
+        let content =
+            "fn add(a: i32, b: i32) -> i32 {\n    let sum = a + b;\n    sum\n}\n\nfn sub() {}";
         let nodes = vec![
             Node {
                 node_id: NodeId::new("src", "lib.rs", "_", "add").unwrap(),
@@ -864,7 +907,7 @@ mod tests {
                 content_hash: "".to_string(),
                 git_sha: None,
                 renamed_from: None,
-            }
+            },
         ];
 
         let skeleton = skeletonize(content, Language::Rust, &nodes);
@@ -875,26 +918,23 @@ mod tests {
     #[test]
     fn test_skeletonize_python() {
         let content = "def hello():\n    print(\"hello\")\n    return 42";
-        let nodes = vec![
-            Node {
-                node_id: NodeId::new("src", "main.py", "_", "hello").unwrap(),
-                kind: NodeKind::Function,
-                name: "hello".to_string(),
-                description: None,
-                signatures: vec![],
-                language: Language::Python,
-                file_path: "src/main.py".to_string(),
-                start_line: 1,
-                end_line: 3,
-                content_hash: "".to_string(),
-                git_sha: None,
-                renamed_from: None,
-            }
-        ];
+        let nodes = vec![Node {
+            node_id: NodeId::new("src", "main.py", "_", "hello").unwrap(),
+            kind: NodeKind::Function,
+            name: "hello".to_string(),
+            description: None,
+            signatures: vec![],
+            language: Language::Python,
+            file_path: "src/main.py".to_string(),
+            start_line: 1,
+            end_line: 3,
+            content_hash: "".to_string(),
+            git_sha: None,
+            renamed_from: None,
+        }];
 
         let skeleton = skeletonize(content, Language::Python, &nodes);
         let expected = "def hello():\n    pass";
         assert_eq!(skeleton, expected);
     }
 }
-

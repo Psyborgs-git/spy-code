@@ -58,7 +58,11 @@ impl GitRepo {
 
         if out.status.success() {
             let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if sha.is_empty() { None } else { Some(sha) }
+            if sha.is_empty() {
+                None
+            } else {
+                Some(sha)
+            }
         } else {
             None
         }
@@ -159,7 +163,7 @@ impl GitRepo {
         let rel_path = file_path.strip_prefix(&self.workdir).unwrap_or(file_path);
         let path_str = rel_path.to_string_lossy();
         let target = format!("{}:{}", git_ref, path_str);
-        
+
         let out = Command::new("git")
             .arg("-C")
             .arg(&self.workdir)
@@ -262,4 +266,3 @@ mod tests {
         assert!(diffs.is_empty());
     }
 }
-

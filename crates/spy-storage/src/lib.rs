@@ -13,22 +13,21 @@ impl Storage {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        
-        let conn = Connection::open(path)
-            .context("Failed to open database")?;
-        
+
+        let conn = Connection::open(path).context("Failed to open database")?;
+
         let mut storage = Storage { conn };
         storage.migrate()?;
         Ok(storage)
     }
-    
+
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
         let mut storage = Storage { conn };
         storage.migrate()?;
         Ok(storage)
     }
-    
+
     fn migrate(&mut self) -> Result<()> {
         self.conn.execute_batch(
             r#"
@@ -118,18 +117,18 @@ impl Storage {
             );
             "#,
         )?;
-        
+
         self.setup_fts()?;
         Ok(())
     }
-    
+
     fn setup_fts(&mut self) -> Result<()> {
         let fts_exists: bool = self.conn.query_row(
             "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='nodes_fts'",
             [],
-            |row| row.get(0)
+            |row| row.get(0),
         )?;
-        
+
         if !fts_exists {
             self.conn.execute_batch(
                 r#"
@@ -161,13 +160,13 @@ impl Storage {
                 "#,
             )?;
         }
-        
+
         Ok(())
     }
-    
+
     pub fn upsert_node(&mut self, node: &Node) -> Result<()> {
         let signatures = serde_json::to_string(&node.signatures)?;
-        
+
         self.conn.execute(
             r#"
             INSERT INTO nodes (
@@ -202,10 +201,10 @@ impl Storage {
                 node.renamed_from.as_ref().map(|id| id.as_str()),
             ],
         )?;
-        
+
         Ok(())
     }
-    
+
     pub fn upsert_edge(&mut self, edge: &Edge) -> Result<()> {
         let table = edge.kind.table_name();
         let query = format!(
@@ -213,55 +212,132 @@ impl Storage {
              ON CONFLICT(from_id, to_id) DO UPDATE SET confidence = excluded.confidence",
             table
         );
-        
+
         self.conn.execute(
             &query,
-            params![
-                edge.from_id.as_str(),
-                edge.to_id.as_str(),
-                edge.confidence,
-            ],
+            params![edge.from_id.as_str(), edge.to_id.as_str(), edge.confidence,],
         )?;
-        
+
         Ok(())
     }
-    
+
     pub fn get_node(&self, node_id: &str) -> Result<Option<Node>> {
-        let result = self.conn.query_row(
-            "SELECT node_id, kind, name, description, signatures, language, 
+        let result = self
+            .conn
+            .query_row(
+                "SELECT node_id, kind, name, description, signatures, language, 
                     file_path, start_line, end_line, content_hash, git_sha, renamed_from
              FROM nodes WHERE node_id = ?1",
-            params![node_id],
-            |row| {
-                let signatures_str: String = row.get(4)?;
-                let signatures = serde_json::from_str(&signatures_str)
-                    .map_err(|_e| rusqlite::Error::InvalidQuery)?;
-                
-                let kind_str: String = row.get(1)?;
-                let kind = match kind_str.as_str() {
-                    "function" => spy_core::NodeKind::Function,
-                    "class" => spy_core::NodeKind::Class,
-                    "constant" => spy_core::NodeKind::Constant,
-                    _ => return Err(rusqlite::Error::InvalidQuery),
-                };
-                
-                let lang_str: String = row.get(5)?;
-                let language = match lang_str.as_str() {
-                    "rust" => spy_core::Language::Rust,
-                    "python" => spy_core::Language::Python,
-                    "typescript" => spy_core::Language::TypeScript,
-                    "javascript" => spy_core::Language::JavaScript,
-                    "go" => spy_core::Language::Go,
-                    _ => return Err(rusqlite::Error::InvalidQuery),
-                };
-                
-                let renamed_from_str: Option<String> = row.get(11)?;
-                let renamed_from = renamed_from_str
-                    .map(|s| NodeId::from_string(s))
-                    .transpose()
-                    .map_err(|_| rusqlite::Error::InvalidQuery)?;
-                
-                Ok(Node {
+                params![node_id],
+                |row| {
+                    let signatures_str: String = row.get(4)?;
+                    let signatures = serde_json::from_str(&signatures_str)
+                        .map_err(|_e| rusqlite::Error::InvalidQuery)?;
+
+                    let kind_str: String = row.get(1)?;
+                    let kind = match kind_str.as_str() {
+                        "function" => spy_core::NodeKind::Function,
+                        "class" => spy_core::NodeKind::Class,
+                        "constant" => spy_core::NodeKind::Constant,
+                        _ => return Err(rusqlite::Error::InvalidQuery),
+                    };
+
+                    let lang_str: String = row.get(5)?;
+                    let language = match lang_str.as_str() {
+                        "rust" => spy_core::Language::Rust,
+                        "python" => spy_core::Language::Python,
+                        "typescript" => spy_core::Language::TypeScript,
+                        "javascript" => spy_core::Language::JavaScript,
+                        "go" => spy_core::Language::Go,
+                        _ => return Err(rusqlite::Error::InvalidQuery),
+                    };
+
+                    let renamed_from_str: Option<String> = row.get(11)?;
+                    let renamed_from = renamed_from_str
+                        .map(NodeId::from_string)
+                        .transpose()
+                        .map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+                    Ok(Node {
+                        node_id: NodeId::from_string(row.get(0)?)
+                            .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                        kind,
+                        name: row.get(2)?,
+                        description: row.get(3)?,
+                        signatures,
+                        language,
+                        file_path: row.get(6)?,
+                        start_line: row.get(7)?,
+                        end_line: row.get(8)?,
+                        content_hash: row.get(9)?,
+                        git_sha: row.get(10)?,
+                        renamed_from,
+                    })
+                },
+            )
+            .optional()?;
+
+        Ok(result)
+    }
+
+    pub fn delete_nodes_for_file(&mut self, file_path: &str) -> Result<()> {
+        self.conn.execute("DELETE FROM edges_calls WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_imports WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_references WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_inherits_from WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_depends_on WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_implements WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+
+        self.conn
+            .execute("DELETE FROM nodes WHERE file_path = ?1", params![file_path])?;
+        Ok(())
+    }
+
+    pub fn search_nodes(&self, query: &str, limit: usize) -> Result<Vec<(Node, f64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT n.node_id, n.kind, n.name, n.description, n.signatures, n.language,
+                    n.file_path, n.start_line, n.end_line, n.content_hash, n.git_sha, n.renamed_from,
+                    rank
+             FROM nodes_fts
+             JOIN nodes n ON nodes_fts.rowid = n.rowid
+             WHERE nodes_fts MATCH ?1
+             ORDER BY rank
+             LIMIT ?2"
+        )?;
+
+        let rows = stmt.query_map(params![query, limit], |row| {
+            let signatures_str: String = row.get(4)?;
+            let signatures =
+                serde_json::from_str(&signatures_str).map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+            let kind_str: String = row.get(1)?;
+            let kind = match kind_str.as_str() {
+                "function" => spy_core::NodeKind::Function,
+                "class" => spy_core::NodeKind::Class,
+                "constant" => spy_core::NodeKind::Constant,
+                _ => return Err(rusqlite::Error::InvalidQuery),
+            };
+
+            let lang_str: String = row.get(5)?;
+            let language = match lang_str.as_str() {
+                "rust" => spy_core::Language::Rust,
+                "python" => spy_core::Language::Python,
+                "typescript" => spy_core::Language::TypeScript,
+                "javascript" => spy_core::Language::JavaScript,
+                "go" => spy_core::Language::Go,
+                _ => return Err(rusqlite::Error::InvalidQuery),
+            };
+
+            let renamed_from_str: Option<String> = row.get(11)?;
+            let renamed_from = renamed_from_str
+                .map(NodeId::from_string)
+                .transpose()
+                .map_err(|_| rusqlite::Error::InvalidQuery)?;
+
+            let rank: f64 = row.get(12)?;
+
+            Ok((
+                Node {
                     node_id: NodeId::from_string(row.get(0)?)
                         .map_err(|_| rusqlite::Error::InvalidQuery)?,
                     kind,
@@ -275,95 +351,18 @@ impl Storage {
                     content_hash: row.get(9)?,
                     git_sha: row.get(10)?,
                     renamed_from,
-                })
-            },
-        ).optional()?;
-        
-        Ok(result)
-    }
-    
-    pub fn delete_nodes_for_file(&mut self, file_path: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM edges_calls WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-        self.conn.execute("DELETE FROM edges_imports WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-        self.conn.execute("DELETE FROM edges_references WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-        self.conn.execute("DELETE FROM edges_inherits_from WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-        self.conn.execute("DELETE FROM edges_depends_on WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-        self.conn.execute("DELETE FROM edges_implements WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-
-        self.conn.execute(
-            "DELETE FROM nodes WHERE file_path = ?1",
-            params![file_path],
-        )?;
-        Ok(())
-    }
-    
-    pub fn search_nodes(&self, query: &str, limit: usize) -> Result<Vec<(Node, f64)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT n.node_id, n.kind, n.name, n.description, n.signatures, n.language,
-                    n.file_path, n.start_line, n.end_line, n.content_hash, n.git_sha, n.renamed_from,
-                    rank
-             FROM nodes_fts
-             JOIN nodes n ON nodes_fts.rowid = n.rowid
-             WHERE nodes_fts MATCH ?1
-             ORDER BY rank
-             LIMIT ?2"
-        )?;
-        
-        let rows = stmt.query_map(params![query, limit], |row| {
-            let signatures_str: String = row.get(4)?;
-            let signatures = serde_json::from_str(&signatures_str)
-                .map_err(|_| rusqlite::Error::InvalidQuery)?;
-            
-            let kind_str: String = row.get(1)?;
-            let kind = match kind_str.as_str() {
-                "function" => spy_core::NodeKind::Function,
-                "class" => spy_core::NodeKind::Class,
-                "constant" => spy_core::NodeKind::Constant,
-                _ => return Err(rusqlite::Error::InvalidQuery),
-            };
-            
-            let lang_str: String = row.get(5)?;
-            let language = match lang_str.as_str() {
-                "rust" => spy_core::Language::Rust,
-                "python" => spy_core::Language::Python,
-                "typescript" => spy_core::Language::TypeScript,
-                "javascript" => spy_core::Language::JavaScript,
-                "go" => spy_core::Language::Go,
-                _ => return Err(rusqlite::Error::InvalidQuery),
-            };
-            
-            let renamed_from_str: Option<String> = row.get(11)?;
-            let renamed_from = renamed_from_str
-                .map(|s| NodeId::from_string(s))
-                .transpose()
-                .map_err(|_| rusqlite::Error::InvalidQuery)?;
-            
-            let rank: f64 = row.get(12)?;
-            
-            Ok((Node {
-                node_id: NodeId::from_string(row.get(0)?)
-                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
-                kind,
-                name: row.get(2)?,
-                description: row.get(3)?,
-                signatures,
-                language,
-                file_path: row.get(6)?,
-                start_line: row.get(7)?,
-                end_line: row.get(8)?,
-                content_hash: row.get(9)?,
-                git_sha: row.get(10)?,
-                renamed_from,
-            }, rank))
+                },
+                rank,
+            ))
         })?;
-        
+
         let mut results = Vec::new();
         for row in rows {
             results.push(row?);
         }
         Ok(results)
     }
-    
+
     pub fn get_file(&self, path: &str) -> Result<Option<FileRecord>> {
         let result = self.conn.query_row(
             "SELECT path, language, content_hash, last_indexed, git_sha FROM files WHERE path = ?1",
@@ -378,10 +377,10 @@ impl Storage {
                 })
             },
         ).optional()?;
-        
+
         Ok(result)
     }
-    
+
     pub fn upsert_file(&mut self, file: &FileRecord) -> Result<()> {
         self.conn.execute(
             r#"
@@ -403,17 +402,20 @@ impl Storage {
         )?;
         Ok(())
     }
-    
+
     pub fn get_meta(&self, key: &str) -> Result<Option<String>> {
-        let result = self.conn.query_row(
-            "SELECT value FROM index_meta WHERE key = ?1",
-            params![key],
-            |row| row.get(0),
-        ).optional()?;
-        
+        let result = self
+            .conn
+            .query_row(
+                "SELECT value FROM index_meta WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .optional()?;
+
         Ok(result)
     }
-    
+
     pub fn set_meta(&mut self, key: &str, value: &str) -> Result<()> {
         self.conn.execute(
             "INSERT INTO index_meta (key, value) VALUES (?1, ?2)
@@ -422,14 +424,14 @@ impl Storage {
         )?;
         Ok(())
     }
-    
+
     pub fn get_edges(&self, from_id: &str, kind: EdgeKind) -> Result<Vec<Edge>> {
         let table = kind.table_name();
         let query = format!(
             "SELECT from_id, to_id, confidence FROM {} WHERE from_id = ?1",
             table
         );
-        
+
         let mut stmt = self.conn.prepare(&query)?;
         let rows = stmt.query_map(params![from_id], |row| {
             Ok(Edge {
@@ -441,21 +443,21 @@ impl Storage {
                 confidence: row.get(2)?,
             })
         })?;
-        
+
         let mut results = Vec::new();
         for row in rows {
             results.push(row?);
         }
         Ok(results)
     }
-    
+
     pub fn get_incoming_edges(&self, to_id: &str, kind: EdgeKind) -> Result<Vec<Edge>> {
         let table = kind.table_name();
         let query = format!(
             "SELECT from_id, to_id, confidence FROM {} WHERE to_id = ?1",
             table
         );
-        
+
         let mut stmt = self.conn.prepare(&query)?;
         let rows = stmt.query_map(params![to_id], |row| {
             Ok(Edge {
@@ -467,14 +469,14 @@ impl Storage {
                 confidence: row.get(2)?,
             })
         })?;
-        
+
         let mut results = Vec::new();
         for row in rows {
             results.push(row?);
         }
         Ok(results)
     }
-    
+
     pub fn list_files(&self) -> Result<Vec<String>> {
         let mut stmt = self.conn.prepare("SELECT path FROM files ORDER BY path")?;
         let rows = stmt.query_map([], |row| row.get(0))?;
@@ -502,50 +504,47 @@ impl Storage {
             placeholders
         );
         let mut stmt = self.conn.prepare(&query)?;
-        let rows = stmt.query_map(
-            rusqlite::params_from_iter(file_paths.iter()),
-            |row| {
-                let signatures_str: String = row.get(4)?;
-                let signatures = serde_json::from_str(&signatures_str)
-                    .map_err(|_| rusqlite::Error::InvalidQuery)?;
-                let kind_str: String = row.get(1)?;
-                let kind = match kind_str.as_str() {
-                    "function" => spy_core::NodeKind::Function,
-                    "class" => spy_core::NodeKind::Class,
-                    "constant" => spy_core::NodeKind::Constant,
-                    _ => return Err(rusqlite::Error::InvalidQuery),
-                };
-                let lang_str: String = row.get(5)?;
-                let language = match lang_str.as_str() {
-                    "rust" => spy_core::Language::Rust,
-                    "python" => spy_core::Language::Python,
-                    "typescript" => spy_core::Language::TypeScript,
-                    "javascript" => spy_core::Language::JavaScript,
-                    "go" => spy_core::Language::Go,
-                    _ => return Err(rusqlite::Error::InvalidQuery),
-                };
-                let renamed_from_str: Option<String> = row.get(11)?;
-                let renamed_from = renamed_from_str
-                    .map(|s| NodeId::from_string(s))
-                    .transpose()
-                    .map_err(|_| rusqlite::Error::InvalidQuery)?;
-                Ok(Node {
-                    node_id: NodeId::from_string(row.get(0)?)
-                        .map_err(|_| rusqlite::Error::InvalidQuery)?,
-                    kind,
-                    name: row.get(2)?,
-                    description: row.get(3)?,
-                    signatures,
-                    language,
-                    file_path: row.get(6)?,
-                    start_line: row.get(7)?,
-                    end_line: row.get(8)?,
-                    content_hash: row.get(9)?,
-                    git_sha: row.get(10)?,
-                    renamed_from,
-                })
-            },
-        )?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(file_paths.iter()), |row| {
+            let signatures_str: String = row.get(4)?;
+            let signatures =
+                serde_json::from_str(&signatures_str).map_err(|_| rusqlite::Error::InvalidQuery)?;
+            let kind_str: String = row.get(1)?;
+            let kind = match kind_str.as_str() {
+                "function" => spy_core::NodeKind::Function,
+                "class" => spy_core::NodeKind::Class,
+                "constant" => spy_core::NodeKind::Constant,
+                _ => return Err(rusqlite::Error::InvalidQuery),
+            };
+            let lang_str: String = row.get(5)?;
+            let language = match lang_str.as_str() {
+                "rust" => spy_core::Language::Rust,
+                "python" => spy_core::Language::Python,
+                "typescript" => spy_core::Language::TypeScript,
+                "javascript" => spy_core::Language::JavaScript,
+                "go" => spy_core::Language::Go,
+                _ => return Err(rusqlite::Error::InvalidQuery),
+            };
+            let renamed_from_str: Option<String> = row.get(11)?;
+            let renamed_from = renamed_from_str
+                .map(NodeId::from_string)
+                .transpose()
+                .map_err(|_| rusqlite::Error::InvalidQuery)?;
+            Ok(Node {
+                node_id: NodeId::from_string(row.get(0)?)
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                kind,
+                name: row.get(2)?,
+                description: row.get(3)?,
+                signatures,
+                language,
+                file_path: row.get(6)?,
+                start_line: row.get(7)?,
+                end_line: row.get(8)?,
+                content_hash: row.get(9)?,
+                git_sha: row.get(10)?,
+                renamed_from,
+            })
+        })?;
         let mut results = Vec::new();
         for row in rows {
             results.push(row?);
@@ -553,8 +552,12 @@ impl Storage {
         Ok(results)
     }
 
-    
-    pub fn find_shortest_path(&self, source_id: &str, target_id: &str, kind: EdgeKind) -> Result<Vec<Edge>> {
+    pub fn find_shortest_path(
+        &self,
+        source_id: &str,
+        target_id: &str,
+        kind: EdgeKind,
+    ) -> Result<Vec<Edge>> {
         let mut queue = std::collections::VecDeque::new();
         let mut visited = std::collections::HashSet::new();
         let mut parent_map = std::collections::HashMap::new();
@@ -563,13 +566,13 @@ impl Storage {
         visited.insert(source_id.to_string());
 
         let mut found = false;
-        
+
         while let Some(current_id) = queue.pop_front() {
             if current_id == target_id {
                 found = true;
                 break;
             }
-            
+
             if let Ok(edges) = self.get_edges(&current_id, kind) {
                 for edge in edges {
                     let to_id_str = edge.to_id.as_str().to_string();
@@ -581,14 +584,14 @@ impl Storage {
                 }
             }
         }
-        
+
         if !found {
             return Ok(Vec::new());
         }
-        
+
         let mut path = Vec::new();
         let mut current = target_id.to_string();
-        
+
         while current != source_id {
             if let Some((parent_id, edge)) = parent_map.remove(&current) {
                 path.push(edge);
@@ -597,13 +600,15 @@ impl Storage {
                 break;
             }
         }
-        
+
         path.reverse();
         Ok(path)
     }
 
     pub fn get_stats(&self) -> Result<IndexStats> {
-        let node_count: i64 = self.conn.query_row("SELECT COUNT(*) FROM nodes", [], |row| row.get(0))?;
+        let node_count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM nodes", [], |row| row.get(0))?;
         let edge_count: i64 = self.conn.query_row(
             "SELECT (SELECT COUNT(*) FROM edges_calls) +
                     (SELECT COUNT(*) FROM edges_imports) +
@@ -612,11 +617,13 @@ impl Storage {
                     (SELECT COUNT(*) FROM edges_implements) +
                     (SELECT COUNT(*) FROM edges_depends_on)",
             [],
-            |row| row.get(0)
+            |row| row.get(0),
         )?;
-        let file_count: i64 = self.conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
+        let file_count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
         let last_git_sha = self.get_meta("last_git_sha")?;
-        
+
         Ok(IndexStats {
             node_count: node_count as usize,
             edge_count: edge_count as usize,
@@ -629,11 +636,11 @@ impl Storage {
         let mut stmt = self.conn.prepare(
             "SELECT node_id, kind, name, description, signatures, language, file_path, start_line, end_line, content_hash, git_sha, renamed_from FROM nodes"
         )?;
-        
+
         let node_iter = stmt.query_map([], |row| {
             let signatures_json: String = row.get(4)?;
             let signatures = serde_json::from_str(&signatures_json).unwrap_or_default();
-            
+
             let kind_str: String = row.get(1)?;
             let kind = match kind_str.as_str() {
                 "function" => spy_core::NodeKind::Function,
@@ -641,7 +648,7 @@ impl Storage {
                 "constant" => spy_core::NodeKind::Constant,
                 _ => spy_core::NodeKind::Function,
             };
-            
+
             let lang_str: String = row.get(5)?;
             let language = match lang_str.as_str() {
                 "rust" => spy_core::Language::Rust,
@@ -653,7 +660,8 @@ impl Storage {
             };
 
             Ok(Node {
-                node_id: NodeId::from_string(row.get(0)?).unwrap_or_else(|_| NodeId::new("_", "_", "_", "_").unwrap()),
+                node_id: NodeId::from_string(row.get(0)?)
+                    .unwrap_or_else(|_| NodeId::new("_", "_", "_", "_").unwrap()),
                 kind,
                 name: row.get(2)?,
                 description: row.get(3)?,
@@ -664,10 +672,12 @@ impl Storage {
                 end_line: row.get(8)?,
                 content_hash: row.get(9)?,
                 git_sha: row.get(10)?,
-                renamed_from: row.get::<_, Option<String>>(11)?.and_then(|s| NodeId::from_string(s).ok()),
+                renamed_from: row
+                    .get::<_, Option<String>>(11)?
+                    .and_then(|s| NodeId::from_string(s).ok()),
             })
         })?;
-        
+
         let mut nodes = Vec::new();
         for node in node_iter {
             nodes.push(node?);
@@ -675,17 +685,24 @@ impl Storage {
         Ok(nodes)
     }
 
-    pub fn get_edges_transitive(&self, node_id: &str, kind: EdgeKind, max_depth: i32) -> Result<Vec<Edge>> {
+    pub fn get_edges_transitive(
+        &self,
+        node_id: &str,
+        kind: EdgeKind,
+        max_depth: i32,
+    ) -> Result<Vec<Edge>> {
         let mut results = Vec::new();
         let mut visited = std::collections::HashSet::new();
         let mut queue = std::collections::VecDeque::new();
-        
+
         queue.push_back((node_id.to_string(), 0));
         visited.insert(node_id.to_string());
-        
+
         while let Some((current_id, depth)) = queue.pop_front() {
-            if depth >= max_depth { continue; }
-            
+            if depth >= max_depth {
+                continue;
+            }
+
             if let Ok(edges) = self.get_edges(&current_id, kind) {
                 for edge in edges {
                     let to_id_str = edge.to_id.as_str().to_string();
@@ -700,17 +717,24 @@ impl Storage {
         Ok(results)
     }
 
-    pub fn get_incoming_edges_transitive(&self, node_id: &str, kind: EdgeKind, max_depth: i32) -> Result<Vec<Edge>> {
+    pub fn get_incoming_edges_transitive(
+        &self,
+        node_id: &str,
+        kind: EdgeKind,
+        max_depth: i32,
+    ) -> Result<Vec<Edge>> {
         let mut results = Vec::new();
         let mut visited = std::collections::HashSet::new();
         let mut queue = std::collections::VecDeque::new();
-        
+
         queue.push_back((node_id.to_string(), 0));
         visited.insert(node_id.to_string());
-        
+
         while let Some((current_id, depth)) = queue.pop_front() {
-            if depth >= max_depth { continue; }
-            
+            if depth >= max_depth {
+                continue;
+            }
+
             if let Ok(edges) = self.get_incoming_edges(&current_id, kind) {
                 for edge in edges {
                     let from_id_str = edge.from_id.as_str().to_string();
@@ -747,11 +771,11 @@ pub struct IndexStats {
 mod tests {
     use super::*;
     use spy_core::{Language, NodeKind, Signature};
-    
+
     #[test]
     fn test_upsert_and_get_node() -> Result<()> {
         let mut storage = Storage::open_in_memory()?;
-        
+
         let node = Node {
             node_id: NodeId::new("src", "lib.rs", "_", "test_fn")?,
             kind: NodeKind::Function,
@@ -769,22 +793,22 @@ mod tests {
             git_sha: None,
             renamed_from: None,
         };
-        
+
         storage.upsert_node(&node)?;
-        
+
         let retrieved = storage.get_node("src:lib.rs:_:test_fn")?;
         assert!(retrieved.is_some());
         let retrieved = retrieved.unwrap();
         assert_eq!(retrieved.name, "test_fn");
         assert_eq!(retrieved.description, Some("A test function".to_string()));
-        
+
         Ok(())
     }
-    
+
     #[test]
     fn test_search_nodes() -> Result<()> {
         let mut storage = Storage::open_in_memory()?;
-        
+
         let node = Node {
             node_id: NodeId::new("src", "lib.rs", "_", "auth_user")?,
             kind: NodeKind::Function,
@@ -799,11 +823,12 @@ mod tests {
             git_sha: None,
             renamed_from: None,
         };
-        
+
         storage.upsert_node(&node)?;
-        
+
         let results = storage.search_nodes("auth", 10)?;
         assert!(!results.is_empty());
-        
+
         Ok(())
-    }}
+    }
+}

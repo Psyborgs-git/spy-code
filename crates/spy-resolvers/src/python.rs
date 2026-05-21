@@ -20,11 +20,7 @@ impl Resolver for PythonResolver {
         let mut nodes = Vec::new();
         let root = ctx.tree.root_node();
 
-        let dir = ctx
-            .path
-            .parent()
-            .and_then(|p| p.to_str())
-            .unwrap_or(".");
+        let dir = ctx.path.parent().and_then(|p| p.to_str()).unwrap_or(".");
         let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
 
         walk_nodes(&root, &ctx.source, dir, file, "_", &mut nodes, ctx)?;
@@ -237,13 +233,19 @@ fn build_import_map(root: &TSNode, source: &[u8]) -> std::collections::HashMap<S
                 for name_node in child.children(&mut c2) {
                     if name_node.kind() == "dotted_name" {
                         let name = node_text(&name_node, source);
-                        map.insert(name.split('.').last().unwrap_or(name).to_string(), name.to_string());
+                        map.insert(
+                            name.split('.').next_back().unwrap_or(name).to_string(),
+                            name.to_string(),
+                        );
                     } else if name_node.kind() == "aliased_import" {
                         if let (Some(n), Some(a)) = (
                             name_node.child_by_field_name("name"),
                             name_node.child_by_field_name("alias"),
                         ) {
-                            map.insert(node_text(&a, source).to_string(), node_text(&n, source).to_string());
+                            map.insert(
+                                node_text(&a, source).to_string(),
+                                node_text(&n, source).to_string(),
+                            );
                         }
                     }
                 }
@@ -286,7 +288,7 @@ fn walk_for_edges(
             if let Some(func_node) = node.child_by_field_name("function") {
                 let func_text = node_text(&func_node, source);
                 // Strip attribute access: foo.bar → try "bar"
-                let bare_name = func_text.split('.').last().unwrap_or(func_text);
+                let bare_name = func_text.split('.').next_back().unwrap_or(func_text);
                 let from_id = infer_containing_function(node, source, ctx)?;
                 if let Some(from_id) = from_id {
                     let candidates = scope.find_nodes_by_name(bare_name);
@@ -321,7 +323,7 @@ fn walk_for_edges(
                         for child in superclasses_node.children(&mut cursor) {
                             if child.kind() == "identifier" || child.kind() == "attribute" {
                                 let base_name = node_text(&child, source);
-                                let bare_name = base_name.split('.').last().unwrap_or(base_name);
+                                let bare_name = base_name.split('.').next_back().unwrap_or(base_name);
                                 let candidates = scope.find_nodes_by_name(bare_name);
                                 if candidates.len() == 1 {
                                     edges.push(Edge {
@@ -364,11 +366,7 @@ fn infer_containing_function(
     source: &[u8],
     ctx: &FileContext,
 ) -> Result<Option<NodeId>> {
-    let dir = ctx
-        .path
-        .parent()
-        .and_then(|p| p.to_str())
-        .unwrap_or(".");
+    let dir = ctx.path.parent().and_then(|p| p.to_str()).unwrap_or(".");
     let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
 
     let mut current = node.parent();
@@ -400,7 +398,7 @@ fn extract_docstring(node: &TSNode, source: &[u8]) -> Option<String> {
     // First child of the body that is an expression_statement containing a string
     let body = node.child_by_field_name("body")?;
     let mut cursor = body.walk();
-    for child in body.children(&mut cursor) {
+    if let Some(child) = body.children(&mut cursor).next() {
         if child.kind() == "expression_statement" {
             if let Some(expr) = child.named_child(0) {
                 if expr.kind() == "string" {
@@ -422,7 +420,6 @@ fn extract_docstring(node: &TSNode, source: &[u8]) -> Option<String> {
                 }
             }
         }
-        break; // only first statement
     }
     None
 }
@@ -438,7 +435,10 @@ fn extract_function_signature(node: &TSNode, source: &[u8]) -> Signature {
                     // positional param without annotation
                     let name = node_text(&child, source);
                     if name != "self" && name != "cls" {
-                        params.push(Param { name: name.to_string(), type_: None });
+                        params.push(Param {
+                            name: name.to_string(),
+                            type_: None,
+                        });
                     }
                 }
                 "typed_parameter" => {
@@ -496,19 +496,16 @@ fn has_overload_decorator(node: &TSNode, source: &[u8]) -> bool {
 fn is_literal(node: &TSNode) -> bool {
     matches!(
         node.kind(),
-        "integer"
-            | "float"
-            | "string"
-            | "true"
-            | "false"
-            | "none"
-            | "concatenated_string"
+        "integer" | "float" | "string" | "true" | "false" | "none" | "concatenated_string"
     )
 }
 
 fn is_valid_identifier(s: &str) -> bool {
     !s.is_empty()
-        && s.chars().next().map(|c| c.is_alphabetic() || c == '_').unwrap_or(false)
+        && s.chars()
+            .next()
+            .map(|c| c.is_alphabetic() || c == '_')
+            .unwrap_or(false)
         && s.chars().all(|c| c.is_alphanumeric() || c == '_')
 }
 
@@ -544,14 +541,20 @@ mod tests {
     fn test_extract_class() {
         let ctx = parse(b"class Foo:\n    def bar(self): pass");
         let nodes = PythonResolver.extract_nodes(&ctx).unwrap();
-        assert!(nodes.iter().any(|n| n.name == "Foo" && n.kind == NodeKind::Class));
-        assert!(nodes.iter().any(|n| n.name == "bar" && n.kind == NodeKind::Function));
+        assert!(nodes
+            .iter()
+            .any(|n| n.name == "Foo" && n.kind == NodeKind::Class));
+        assert!(nodes
+            .iter()
+            .any(|n| n.name == "bar" && n.kind == NodeKind::Function));
     }
 
     #[test]
     fn test_extract_constant() {
         let ctx = parse(b"MAX = 100");
         let nodes = PythonResolver.extract_nodes(&ctx).unwrap();
-        assert!(nodes.iter().any(|n| n.name == "MAX" && n.kind == NodeKind::Constant));
+        assert!(nodes
+            .iter()
+            .any(|n| n.name == "MAX" && n.kind == NodeKind::Constant));
     }
 }

@@ -20,11 +20,7 @@ impl Resolver for GoResolver {
         let mut nodes = Vec::new();
         let root = ctx.tree.root_node();
 
-        let dir = ctx
-            .path
-            .parent()
-            .and_then(|p| p.to_str())
-            .unwrap_or(".");
+        let dir = ctx.path.parent().and_then(|p| p.to_str()).unwrap_or(".");
         let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
 
         walk_nodes(&root, &ctx.source, dir, file, &mut nodes, ctx)?;
@@ -187,7 +183,7 @@ fn walk_for_edges(
         if let Some(func_node) = node.child_by_field_name("function") {
             let func_text = node_text(&func_node, source);
             // Strip package qualifier: fmt.Println → Println
-            let bare = func_text.split('.').last().unwrap_or(func_text);
+            let bare = func_text.split('.').next_back().unwrap_or(func_text);
             if let Some(from_id) = infer_containing_function(node, source, ctx)? {
                 let candidates = scope.find_nodes_by_name(bare);
                 if candidates.len() == 1 {
@@ -222,11 +218,7 @@ fn infer_containing_function(
     source: &[u8],
     ctx: &FileContext,
 ) -> Result<Option<NodeId>> {
-    let dir = ctx
-        .path
-        .parent()
-        .and_then(|p| p.to_str())
-        .unwrap_or(".");
+    let dir = ctx.path.parent().and_then(|p| p.to_str()).unwrap_or(".");
     let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
 
     let mut current = node.parent();
@@ -352,20 +344,26 @@ mod tests {
     fn test_go_function() {
         let ctx = parse(b"package main\nfunc Hello(name string) string { return name }");
         let nodes = GoResolver.extract_nodes(&ctx).unwrap();
-        assert!(nodes.iter().any(|n| n.name == "Hello" && n.kind == NodeKind::Function));
+        assert!(nodes
+            .iter()
+            .any(|n| n.name == "Hello" && n.kind == NodeKind::Function));
     }
 
     #[test]
     fn test_go_method() {
         let ctx = parse(b"package main\ntype Foo struct{}\nfunc (f *Foo) Bar() {}");
         let nodes = GoResolver.extract_nodes(&ctx).unwrap();
-        assert!(nodes.iter().any(|n| n.name == "Bar" && n.kind == NodeKind::Function));
+        assert!(nodes
+            .iter()
+            .any(|n| n.name == "Bar" && n.kind == NodeKind::Function));
     }
 
     #[test]
     fn test_go_struct() {
         let ctx = parse(b"package main\ntype Server struct { addr string }");
         let nodes = GoResolver.extract_nodes(&ctx).unwrap();
-        assert!(nodes.iter().any(|n| n.name == "Server" && n.kind == NodeKind::Class));
+        assert!(nodes
+            .iter()
+            .any(|n| n.name == "Server" && n.kind == NodeKind::Class));
     }
 }

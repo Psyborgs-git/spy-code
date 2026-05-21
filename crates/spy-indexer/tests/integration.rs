@@ -14,8 +14,10 @@ fn make_storage() -> (TempDir, Storage) {
 
 fn fixtures_path(lang: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .join("tests/fixtures")
         .join(lang)
 }
@@ -24,9 +26,18 @@ fn fixtures_path(lang: &str) -> std::path::PathBuf {
 fn test_detect_language() {
     assert_eq!(detect_language(Path::new("foo.rs")), Some(Language::Rust));
     assert_eq!(detect_language(Path::new("foo.py")), Some(Language::Python));
-    assert_eq!(detect_language(Path::new("foo.ts")), Some(Language::TypeScript));
-    assert_eq!(detect_language(Path::new("foo.tsx")), Some(Language::TypeScript));
-    assert_eq!(detect_language(Path::new("foo.js")), Some(Language::JavaScript));
+    assert_eq!(
+        detect_language(Path::new("foo.ts")),
+        Some(Language::TypeScript)
+    );
+    assert_eq!(
+        detect_language(Path::new("foo.tsx")),
+        Some(Language::TypeScript)
+    );
+    assert_eq!(
+        detect_language(Path::new("foo.js")),
+        Some(Language::JavaScript)
+    );
     assert_eq!(detect_language(Path::new("foo.go")), Some(Language::Go));
     assert_eq!(detect_language(Path::new("foo.txt")), None);
 }
@@ -42,7 +53,11 @@ fn test_index_rust_fixtures() -> Result<()> {
     let stats = indexer.index(&root, true)?;
     // math.rs: add, subtract, MAX_VALUE = at least 3 nodes
     // traits.rs: Animal (trait), Dog (struct), multiple methods
-    assert!(stats.nodes_extracted >= 3, "Expected >=3 nodes, got {}", stats.nodes_extracted);
+    assert!(
+        stats.nodes_extracted >= 3,
+        "Expected >=3 nodes, got {}",
+        stats.nodes_extracted
+    );
     Ok(())
 }
 
@@ -55,7 +70,11 @@ fn test_index_python_fixtures() -> Result<()> {
     let (_dir, storage) = make_storage();
     let mut indexer = Indexer::new(storage, Config::default());
     let stats = indexer.index(&root, true)?;
-    assert!(stats.nodes_extracted >= 4, "Expected >=4 nodes, got {}", stats.nodes_extracted);
+    assert!(
+        stats.nodes_extracted >= 4,
+        "Expected >=4 nodes, got {}",
+        stats.nodes_extracted
+    );
     Ok(())
 }
 
@@ -69,7 +88,11 @@ fn test_index_typescript_fixtures() -> Result<()> {
     let mut indexer = Indexer::new(storage, Config::default());
     let stats = indexer.index(&root, true)?;
     // add, subtract, MAX_VALUE, Animal, Dog, speak x2, constructor
-    assert!(stats.nodes_extracted >= 4, "Expected >=4 nodes, got {}", stats.nodes_extracted);
+    assert!(
+        stats.nodes_extracted >= 4,
+        "Expected >=4 nodes, got {}",
+        stats.nodes_extracted
+    );
     Ok(())
 }
 
@@ -83,7 +106,11 @@ fn test_index_go_fixtures() -> Result<()> {
     let mut indexer = Indexer::new(storage, Config::default());
     let stats = indexer.index(&root, true)?;
     // Add, Subtract, MaxValue, Animal, Dog, Speak x2
-    assert!(stats.nodes_extracted >= 4, "Expected >=4 nodes, got {}", stats.nodes_extracted);
+    assert!(
+        stats.nodes_extracted >= 4,
+        "Expected >=4 nodes, got {}",
+        stats.nodes_extracted
+    );
     Ok(())
 }
 

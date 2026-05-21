@@ -174,8 +174,7 @@ impl Indexer {
             let abs = workdir.join(&diff.path);
             match &diff.status {
                 FileChangeStatus::Deleted => {
-                    self.storage
-                        .delete_nodes_for_file(&abs.to_string_lossy())?;
+                    self.storage.delete_nodes_for_file(&abs.to_string_lossy())?;
                 }
                 FileChangeStatus::Renamed { old_path } => {
                     let old_abs = workdir.join(old_path);
@@ -224,7 +223,11 @@ impl Indexer {
             let path = entry.path();
             let in_ignored = path.ancestors().any(|a| {
                 a.file_name()
-                    .map(|n| ignore_dirs.iter().any(|d| *d == n.to_string_lossy().as_ref()))
+                    .map(|n| {
+                        ignore_dirs
+                            .iter()
+                            .any(|d| *d == n.to_string_lossy().as_ref())
+                    })
                     .unwrap_or(false)
             });
             if in_ignored {
@@ -286,15 +289,23 @@ impl Indexer {
         let cargo_toml = root_path.join("Cargo.toml");
         if cargo_toml.exists() {
             if let Ok(content) = std::fs::read_to_string(&cargo_toml) {
-                let file_path = cargo_toml.strip_prefix(root_path).unwrap_or(&cargo_toml).to_string_lossy().to_string();
+                let file_path = cargo_toml
+                    .strip_prefix(root_path)
+                    .unwrap_or(&cargo_toml)
+                    .to_string_lossy()
+                    .to_string();
                 self.parse_cargo_dependencies(&content, &file_path)?;
             }
         }
-        
+
         let pkg_json = root_path.join("package.json");
         if pkg_json.exists() {
             if let Ok(content) = std::fs::read_to_string(&pkg_json) {
-                let file_path = pkg_json.strip_prefix(root_path).unwrap_or(&pkg_json).to_string_lossy().to_string();
+                let file_path = pkg_json
+                    .strip_prefix(root_path)
+                    .unwrap_or(&pkg_json)
+                    .to_string_lossy()
+                    .to_string();
                 self.parse_package_dependencies(&content, &file_path)?;
             }
         }
@@ -302,7 +313,11 @@ impl Indexer {
         let go_mod = root_path.join("go.mod");
         if go_mod.exists() {
             if let Ok(content) = std::fs::read_to_string(&go_mod) {
-                let file_path = go_mod.strip_prefix(root_path).unwrap_or(&go_mod).to_string_lossy().to_string();
+                let file_path = go_mod
+                    .strip_prefix(root_path)
+                    .unwrap_or(&go_mod)
+                    .to_string_lossy()
+                    .to_string();
                 self.parse_go_dependencies(&content, &file_path)?;
             }
         }
@@ -310,19 +325,23 @@ impl Indexer {
         let req_txt = root_path.join("requirements.txt");
         if req_txt.exists() {
             if let Ok(content) = std::fs::read_to_string(&req_txt) {
-                let file_path = req_txt.strip_prefix(root_path).unwrap_or(&req_txt).to_string_lossy().to_string();
+                let file_path = req_txt
+                    .strip_prefix(root_path)
+                    .unwrap_or(&req_txt)
+                    .to_string_lossy()
+                    .to_string();
                 self.parse_req_dependencies(&content, &file_path)?;
             }
         }
-        
+
         Ok(())
     }
 
     fn add_dependency_node(&mut self, dep_name: &str, file_path: &str) -> Result<()> {
-        use spy_core::{Node, NodeId, NodeKind, Language};
-        
+        use spy_core::{Language, Node, NodeId, NodeKind};
+
         let node_id = NodeId::new("dependency", file_path, "", dep_name)?;
-        
+
         let node = Node {
             node_id,
             kind: NodeKind::Dependency,
@@ -337,7 +356,7 @@ impl Indexer {
             git_sha: None,
             renamed_from: None,
         };
-        
+
         self.storage.upsert_node(&node)?;
         Ok(())
     }
@@ -382,7 +401,8 @@ impl Indexer {
         for line in content.lines() {
             let line = line.trim();
             if !line.is_empty() && !line.starts_with('#') {
-                let dep_name = line.split(&['=', '>', '<', '~', '@'][..])
+                let dep_name = line
+                    .split(&['=', '>', '<', '~', '@'][..])
                     .next()
                     .unwrap_or("")
                     .trim();
@@ -454,4 +474,3 @@ pub struct IndexStats {
     pub nodes_extracted: usize,
     pub edges_extracted: usize,
 }
-

@@ -20,14 +20,10 @@ impl Resolver for RustResolver {
         let mut nodes = Vec::new();
         let root = ctx.tree.root_node();
 
-        let dir = ctx
-            .path
-            .parent()
-            .and_then(|p| p.to_str())
-            .unwrap_or(".");
+        let dir = ctx.path.parent().and_then(|p| p.to_str()).unwrap_or(".");
         let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
 
-        walk_nodes(&root, &ctx.source, dir, file, "_", &mut nodes, &ctx)?;
+        walk_nodes(&root, &ctx.source, dir, file, "_", &mut nodes, ctx)?;
 
         Ok(nodes)
     }
@@ -190,7 +186,7 @@ fn walk_for_edges(
             if let Some(func_node) = node.child_by_field_name("function") {
                 let func_text = node_text(&func_node, source);
                 let from_id = infer_containing_function(node, source, ctx)?;
-    
+
                 if let Some(from_id) = from_id {
                     let candidates = scope.find_nodes_by_name(func_text);
                     if candidates.len() == 1 {
@@ -257,11 +253,7 @@ fn infer_containing_function(
     ctx: &FileContext,
 ) -> Result<Option<NodeId>> {
     let mut current = node.parent();
-    let dir = ctx
-        .path
-        .parent()
-        .and_then(|p| p.to_str())
-        .unwrap_or(".");
+    let dir = ctx.path.parent().and_then(|p| p.to_str()).unwrap_or(".");
     let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
 
     while let Some(parent) = current {
@@ -277,7 +269,9 @@ fn infer_containing_function(
                 if let Some(body) = parent.child_by_field_name("body") {
                     let mut func_parent = *node;
                     while let Some(p) = func_parent.parent() {
-                        if p.kind() == "function_item" && p.parent().map(|pp| pp.id()) == Some(body.id()) {
+                        if p.kind() == "function_item"
+                            && p.parent().map(|pp| pp.id()) == Some(body.id())
+                        {
                             if let Some(name_node) = p.child_by_field_name("name") {
                                 let name = node_text(&name_node, source);
                                 return Ok(Some(NodeId::new(dir, file, type_name, name)?));

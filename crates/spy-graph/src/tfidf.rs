@@ -12,9 +12,9 @@ impl TfIdfIndex {
     pub fn build(nodes: Vec<Node>) -> Self {
         let mut doc_freq = HashMap::new();
         let mut tf_vectors = Vec::with_capacity(nodes.len());
-        
+
         let num_docs = nodes.len() as f64;
-        
+
         // Compute TF and DF
         for node in &nodes {
             let tokens = tokenize(node);
@@ -22,26 +22,26 @@ impl TfIdfIndex {
             for token in &tokens {
                 *tf.entry(token.clone()).or_insert(0.0) += 1.0;
             }
-            
+
             let len = tokens.len() as f64;
             if len > 0.0 {
                 for v in tf.values_mut() {
                     *v /= len;
                 }
             }
-            
+
             for token in tf.keys() {
                 *doc_freq.entry(token.clone()).or_insert(0.0) += 1.0;
             }
             tf_vectors.push(tf);
         }
-        
+
         // Compute IDF
         let mut idf = HashMap::new();
         for (token, df) in doc_freq {
             idf.insert(token, (num_docs / (1.0 + df)).ln() + 1.0);
         }
-        
+
         // Compute TF-IDF vectors and their norms
         let mut norms = Vec::with_capacity(nodes.len());
         for tf in &mut tf_vectors {
@@ -54,24 +54,29 @@ impl TfIdfIndex {
             }
             norms.push(norm_sq.sqrt());
         }
-        
-        Self { nodes, idf, tf_vectors, norms }
+
+        Self {
+            nodes,
+            idf,
+            tf_vectors,
+            norms,
+        }
     }
-    
+
     pub fn search(&self, query: &str, limit: usize) -> Vec<(Node, f64)> {
         let tokens = tokenize_text(query);
         let mut q_tf = HashMap::new();
         for token in &tokens {
             *q_tf.entry(token.clone()).or_insert(0.0) += 1.0;
         }
-        
+
         let len = tokens.len() as f64;
         if len > 0.0 {
             for v in q_tf.values_mut() {
                 *v /= len;
             }
         }
-        
+
         let mut q_norm_sq = 0.0;
         for (token, tf_val) in q_tf.iter_mut() {
             let idf_val = self.idf.get(token).unwrap_or(&1.0);
@@ -80,11 +85,11 @@ impl TfIdfIndex {
             q_norm_sq += tfidf * tfidf;
         }
         let q_norm = q_norm_sq.sqrt();
-        
+
         if q_norm == 0.0 {
             return vec![];
         }
-        
+
         let mut scores = Vec::with_capacity(self.nodes.len());
         for (i, tf) in self.tf_vectors.iter().enumerate() {
             let mut dot = 0.0;
@@ -93,15 +98,19 @@ impl TfIdfIndex {
                     dot += q_val * doc_val;
                 }
             }
-            
+
             let doc_norm = self.norms[i];
-            let score = if doc_norm > 0.0 { dot / (q_norm * doc_norm) } else { 0.0 };
-            
+            let score = if doc_norm > 0.0 {
+                dot / (q_norm * doc_norm)
+            } else {
+                0.0
+            };
+
             if score > 0.0 {
                 scores.push((self.nodes[i].clone(), score));
             }
         }
-        
+
         scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         scores.truncate(limit);
         scores
@@ -111,20 +120,20 @@ impl TfIdfIndex {
 fn tokenize(node: &Node) -> Vec<String> {
     let mut text = node.name.clone();
     if let Some(desc) = &node.description {
-        text.push_str(" ");
+        text.push(' ');
         text.push_str(desc);
     }
     for sig in &node.signatures {
         for param in &sig.params {
-            text.push_str(" ");
+            text.push(' ');
             text.push_str(&param.name);
             if let Some(t) = &param.type_ {
-                text.push_str(" ");
+                text.push(' ');
                 text.push_str(t);
             }
         }
         if let Some(ret) = &sig.returns {
-            text.push_str(" ");
+            text.push(' ');
             text.push_str(ret);
         }
     }
