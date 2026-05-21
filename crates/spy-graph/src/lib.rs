@@ -816,7 +816,7 @@ fn skeletonize(
 
     // Sort functions by start_line descending to avoid index shifting issues
     let mut sorted_funcs = functions.to_vec();
-    sorted_funcs.sort_by(|a, b| b.start_line.cmp(&a.start_line));
+    sorted_funcs.sort_by_key(|b| std::cmp::Reverse(b.start_line));
 
     for func in sorted_funcs {
         let start_idx = (func.start_line as usize).saturating_sub(1);
