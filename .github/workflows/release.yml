@@ -177,5 +177,5 @@ jobs:
           # If OIDC Trusted Publishing is NOT yet configured on PyPI,
           # uncomment the two lines below and add PYPI_API_TOKEN to your
           # repository secrets instead.
-          # password: ${{ secrets.PYPI_API_TOKEN }}
-          # skip-existing: true
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
