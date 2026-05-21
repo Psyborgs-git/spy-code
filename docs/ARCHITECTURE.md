@@ -16,6 +16,7 @@ spy-code/
 │   ├── spy-git/                # git diff + hash tracking (gix)
 │   ├── spy-indexer/            # orchestrates parse → resolve → store
 │   ├── spy-mcp/                # MCP server (stdio JSON-RPC)
+│   ├── spy-embeddings/         # vector embeddings for semantic search
 │   └── spy-cli/                # binary entrypoint
 └── docs/
 ```
@@ -46,7 +47,8 @@ spy-code/
    .spy-code/graph.db
      │
      ├──► [spy-graph] GraphQL queries ──► [spy-cli query]
-     └──► [spy-mcp] MCP tools ──────────► AI clients
+     ├──► [spy-mcp] MCP tools ──────────► AI clients
+     └──► [spy-embeddings] Vector embeddings ◄──► [spy-cli embed]
 ```
 
 ## Key principles

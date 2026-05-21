@@ -13,6 +13,8 @@ Built for AI systems that need precise, queryable context about a codebase — n
 - **Query**: real GraphQL via `async-graphql`.
 - **Interfaces**: `spy-code` CLI binary + MCP server (stdio).
 - **Incremental**: content-hash per file, skip unchanged. Git-aware: only re-index files changed since last indexed commit.
+- **Embeddings**: vector embeddings for semantic search using open-source models (optional).
+- **Graph Visualization**: interactive React-based graph UI for exploring code relationships.
 
 ## Supported languages (v1)
 
@@ -29,3 +31,28 @@ Rust, Python, TypeScript/JavaScript, Go. All via tree-sitter grammars + per-lang
 - `docs/GIT_INTEGRATION.md` — change tracking
 - `docs/ROADMAP.md` — milestones
 - `docs/TESTING.md` — test strategy
+- `docs/EMBEDDINGS.md` — vector embeddings for semantic search
+
+## Quick start
+
+```bash
+# Initialize
+spy-code init
+
+# Index your codebase
+spy-code index
+
+# Query the graph
+spy-code search "auth"
+spy-code callers src:auth.rs:_:login
+
+# Generate embeddings for semantic search
+spy-code embed
+
+# Ask natural language questions
+spy-code ask "how do I authenticate users?"
+
+# Start GraphQL server with graph visualization
+spy-code serve --http
+# Visit http://localhost:4000/graph for interactive graph UI
+```

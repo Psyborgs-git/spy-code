@@ -10,10 +10,11 @@ members = [
     "crates/spy-indexer",
     "crates/spy-mcp",
     "crates/spy-cli",
+    "crates/spy-embeddings",
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.2"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/Psyborgs-git/spy-code"
@@ -28,6 +29,7 @@ spy-graph = { path = "crates/spy-graph" }
 spy-git = { path = "crates/spy-git" }
 spy-indexer = { path = "crates/spy-indexer" }
 spy-mcp = { path = "crates/spy-mcp" }
+spy-embeddings = { path = "crates/spy-embeddings" }
 
 # External dependencies
 anyhow = "1"

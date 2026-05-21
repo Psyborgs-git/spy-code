@@ -10,6 +10,7 @@ spy-storage = { workspace = true }
 spy-git = { workspace = true }
 spy-parser = { workspace = true }
 spy-resolvers = { workspace = true }
+spy-embeddings = { workspace = true }
 async-graphql = { workspace = true }
 async-graphql-axum = { workspace = true }
 axum = { workspace = true }

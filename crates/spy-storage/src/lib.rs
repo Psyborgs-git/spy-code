@@ -45,11 +45,11 @@ impl Storage {
                 git_sha       TEXT,
                 renamed_from  TEXT
             );
-            
+
             CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes(name);
             CREATE INDEX IF NOT EXISTS idx_nodes_file ON nodes(file_path);
             CREATE INDEX IF NOT EXISTS idx_nodes_kind ON nodes(kind);
-            
+
             CREATE TABLE IF NOT EXISTS edges_calls (
                 from_id     TEXT NOT NULL,
                 to_id       TEXT NOT NULL,
@@ -57,27 +57,27 @@ impl Storage {
                 PRIMARY KEY (from_id, to_id),
                 FOREIGN KEY (from_id) REFERENCES nodes(node_id) ON DELETE CASCADE
             );
-            
+
             CREATE INDEX IF NOT EXISTS idx_calls_to ON edges_calls(to_id);
-            
+
             CREATE TABLE IF NOT EXISTS edges_imports (
                 from_id     TEXT NOT NULL,
                 to_id       TEXT NOT NULL,
                 confidence  REAL NOT NULL DEFAULT 1.0,
                 PRIMARY KEY (from_id, to_id)
             );
-            
+
             CREATE INDEX IF NOT EXISTS idx_imports_to ON edges_imports(to_id);
-            
+
             CREATE TABLE IF NOT EXISTS edges_references (
                 from_id     TEXT NOT NULL,
                 to_id       TEXT NOT NULL,
                 confidence  REAL NOT NULL DEFAULT 1.0,
                 PRIMARY KEY (from_id, to_id)
             );
-            
+
             CREATE INDEX IF NOT EXISTS idx_refs_to ON edges_references(to_id);
-            
+
             CREATE TABLE IF NOT EXISTS edges_inherits_from (
                 from_id     TEXT NOT NULL,
                 to_id       TEXT NOT NULL,
@@ -94,7 +94,7 @@ impl Storage {
             );
             CREATE INDEX IF NOT EXISTS idx_implements_to ON edges_implements(to_id);
 
-            
+
             CREATE TABLE IF NOT EXISTS edges_depends_on (
                 from_id     TEXT NOT NULL,
                 to_id       TEXT NOT NULL,
@@ -110,10 +110,33 @@ impl Storage {
                 last_indexed   INTEGER NOT NULL,
                 git_sha        TEXT
             );
-            
+
             CREATE TABLE IF NOT EXISTS index_meta (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS node_embeddings (
+                node_id TEXT PRIMARY KEY,
+                embedding BLOB NOT NULL,
+                embedding_model TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS source_embeddings (
+                node_id TEXT PRIMARY KEY,
+                embedding BLOB NOT NULL,
+                embedding_model TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS embedding_progress (
+                id INTEGER PRIMARY KEY,
+                total_nodes INTEGER NOT NULL,
+                processed_nodes INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL,
+                started_at INTEGER NOT NULL,
+                completed_at INTEGER
             );
             "#,
         )?;
@@ -139,19 +162,19 @@ impl Storage {
                     content=nodes,
                     content_rowid=rowid
                 );
-                
+
                 INSERT INTO nodes_fts(rowid, node_id, name, description)
                 SELECT rowid, node_id, name, description FROM nodes;
-                
+
                 CREATE TRIGGER nodes_ai AFTER INSERT ON nodes BEGIN
                     INSERT INTO nodes_fts(rowid, node_id, name, description)
                     VALUES (NEW.rowid, NEW.node_id, NEW.name, NEW.description);
                 END;
-                
+
                 CREATE TRIGGER nodes_ad AFTER DELETE ON nodes BEGIN
                     DELETE FROM nodes_fts WHERE rowid = OLD.rowid;
                 END;
-                
+
                 CREATE TRIGGER nodes_au AFTER UPDATE ON nodes BEGIN
                     DELETE FROM nodes_fts WHERE rowid = OLD.rowid;
                     INSERT INTO nodes_fts(rowid, node_id, name, description)
@@ -225,7 +248,7 @@ impl Storage {
         let result = self
             .conn
             .query_row(
-                "SELECT node_id, kind, name, description, signatures, language, 
+                "SELECT node_id, kind, name, description, signatures, language,
                     file_path, start_line, end_line, content_hash, git_sha, renamed_from
              FROM nodes WHERE node_id = ?1",
                 params![node_id],
@@ -747,6 +770,32 @@ impl Storage {
             }
         }
         Ok(results)
+    }
+
+    pub fn execute_raw(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> Result<()> {
+        self.conn.execute(sql, params)?;
+        Ok(())
+    }
+
+    pub fn query_raw<F, T>(&self, sql: &str, params: &[&dyn rusqlite::ToSql], f: F) -> Result<Vec<T>>
+    where
+        F: Fn(&rusqlite::Row) -> rusqlite::Result<T>,
+    {
+        let mut stmt = self.conn.prepare(sql)?;
+        let rows = stmt.query_map(params, f)?;
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+        Ok(results)
+    }
+
+    pub fn query_row_raw<F, T>(&self, sql: &str, params: &[&dyn rusqlite::ToSql], f: F) -> Result<Option<T>>
+    where
+        F: Fn(&rusqlite::Row) -> rusqlite::Result<T>,
+    {
+        let result = self.conn.query_row(sql, params, f).optional()?;
+        Ok(result)
     }
 }
 

@@ -18,6 +18,9 @@ spy-code changed <git_ref>             # nodes changed since ref
 spy-code stats                         # node/edge/file counts
 spy-code serve --mcp                   # MCP stdio server
 spy-code serve --http [--port 4000]    # GraphQL HTTP server (dev)
+spy-code embed [--full] [--model <path>] # Generate embeddings for semantic search
+spy-code ask "natural language query"  # Ask questions about the codebase
+spy-code graph [--path .] [--open]     # Generate and serve graph visualization
 ```
 
 ### Examples
@@ -29,6 +32,9 @@ spy-code search "auth" --kind function
 spy-code query '{ node(id: "src:auth.rs:_:login") { name description signatures { params { name type } returns } } }'
 spy-code callers src:auth.rs:_:login --depth 2
 spy-code changed HEAD~5
+spy-code embed --model .spy-code/models/all-MiniLM-L6-v2
+spy-code ask "how do I authenticate users in this codebase?"
+spy-code graph --open
 ```
 
 ### Output

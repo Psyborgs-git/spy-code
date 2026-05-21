@@ -93,6 +93,33 @@ CREATE VIRTUAL TABLE nodes_fts USING fts5(
 
 Triggers keep `nodes_fts` in sync on insert/update/delete of `nodes`.
 
+### Embeddings
+
+```sql
+CREATE TABLE node_embeddings (
+  node_id TEXT PRIMARY KEY,
+  embedding BLOB NOT NULL,
+  embedding_model TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE source_embeddings (
+  node_id TEXT PRIMARY KEY,
+  embedding BLOB NOT NULL,
+  embedding_model TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE embedding_progress (
+  id INTEGER PRIMARY KEY,
+  total_nodes INTEGER NOT NULL,
+  processed_nodes INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL,
+  started_at INTEGER NOT NULL,
+  completed_at INTEGER
+);
+```
+
 ---
 
 ## GraphQL schema
@@ -156,6 +183,29 @@ type Query {
   changedSince(ref: GitRef!): [Node!]!
   files: [String!]!
   stats: IndexStats!
+  semanticSearchEmbeddings(query: String!, limit: Int = 20): [SearchResult!]!
+  embeddingsStatus: EmbeddingStatus!
+  graphData(filter: GraphFilter): GraphData!
+}
+
+input GraphFilter {
+  filePath: String
+  nodeKinds: [NodeKind!]
+  languages: [Language!]
+  edgeKinds: [EdgeKind!]
+}
+
+type GraphData {
+  nodes: [Node!]!
+  edges: [Edge!]!
+}
+
+type EmbeddingStatus {
+  totalNodes: Int!
+  processedNodes: Int!
+  status: String!
+  startedAt: Int!
+  completedAt: Int
 }
 
 type IndexStats {

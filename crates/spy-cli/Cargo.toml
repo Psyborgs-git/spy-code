@@ -15,6 +15,7 @@ spy-indexer = { workspace = true }
 spy-graph = { workspace = true }
 spy-git = { workspace = true }
 spy-mcp = { workspace = true }
+spy-embeddings = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }

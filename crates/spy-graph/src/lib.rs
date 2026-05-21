@@ -1,5 +1,6 @@
 use async_graphql::{Context, EmptyMutation, EmptySubscription, Object, Schema, SimpleObject};
 use spy_core::{EdgeKind, Language, NodeKind};
+use spy_embeddings::EmbeddingManager;
 use spy_storage::Storage;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -427,6 +428,127 @@ impl QueryRoot {
 
         Ok(skeleton)
     }
+
+    #[graphql(name = "semanticSearchEmbeddings")]
+    async fn semantic_search_embeddings(
+        &self,
+        ctx: &Context<'_>,
+        query: String,
+        limit: Option<i32>,
+    ) -> async_graphql::Result<Vec<SearchResult>> {
+        let _state = ctx.data::<Arc<GraphState>>()?;
+        let _storage = _state.storage.lock().unwrap();
+        let limit = limit.unwrap_or(20) as usize;
+
+        // Create a new storage connection for embedding manager
+        let embedding_storage = Storage::open(".spy-code/graph.db")
+            .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?;
+
+        let embedding_manager = EmbeddingManager::new(embedding_storage);
+        let results: Vec<(spy_core::Node, f64)> = embedding_manager
+            .semantic_search(&query, limit)
+            .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?;
+
+        Ok(results
+            .into_iter()
+            .map(|(n, score): (spy_core::Node, f64)| SearchResult {
+                node: n.into(),
+                score,
+            })
+            .collect())
+    }
+
+    #[graphql(name = "embeddingsStatus")]
+    async fn embeddings_status(&self, ctx: &Context<'_>) -> async_graphql::Result<EmbeddingStatusGQL> {
+        let _state = ctx.data::<Arc<GraphState>>()?;
+
+        // Create a new storage connection for embedding manager
+        let embedding_storage = Storage::open(".spy-code/graph.db")
+            .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?;
+
+        let embedding_manager = EmbeddingManager::new(embedding_storage);
+        let status = embedding_manager
+            .get_embedding_status()
+            .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?;
+
+        Ok(EmbeddingStatusGQL {
+            total_nodes: status.total_nodes,
+            processed_nodes: status.processed_nodes,
+            status: status.status,
+            started_at: status.started_at,
+            completed_at: status.completed_at,
+        })
+    }
+
+    #[graphql(name = "graphData")]
+    async fn graph_data(
+        &self,
+        ctx: &Context<'_>,
+        filter: Option<GraphFilterInput>,
+    ) -> async_graphql::Result<GraphData> {
+        let state = ctx.data::<Arc<GraphState>>()?;
+        let storage = state.storage.lock().unwrap();
+
+        let filter = filter.unwrap_or_default();
+        let mut nodes = storage.get_all_nodes()
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?;
+
+        // Apply filters
+        if let Some(ref file_path) = filter.file_path {
+            nodes.retain(|n| n.file_path.contains(file_path));
+        }
+
+        if let Some(ref node_kinds) = filter.node_kinds {
+            let kind_set: std::collections::HashSet<NodeKindGQL> = node_kinds.iter().cloned().collect();
+            nodes.retain(|n| {
+                let gql_kind = match n.kind {
+                    spy_core::NodeKind::Function => NodeKindGQL::Function,
+                    spy_core::NodeKind::Class => NodeKindGQL::Class,
+                    spy_core::NodeKind::Constant => NodeKindGQL::Constant,
+                    spy_core::NodeKind::Dependency => NodeKindGQL::Dependency,
+                };
+                kind_set.contains(&gql_kind)
+            });
+        }
+
+        if let Some(ref languages) = filter.languages {
+            let lang_set: std::collections::HashSet<LanguageGQL> = languages.iter().cloned().collect();
+            nodes.retain(|n| lang_set.contains(&LanguageGQL::from(n.language)));
+        }
+
+        // Convert to GraphQL nodes
+        let gql_nodes: Vec<Node> = nodes.into_iter().map(Into::into).collect();
+
+        // Get edges for filtered nodes
+        let mut edges = Vec::new();
+        if let Some(ref edge_kinds) = filter.edge_kinds {
+            for node in &gql_nodes {
+                for kind in edge_kinds {
+                    let core_kind = match kind {
+                        EdgeKindGQL::Calls => spy_core::EdgeKind::Calls,
+                        EdgeKindGQL::Imports => spy_core::EdgeKind::Imports,
+                        EdgeKindGQL::References => spy_core::EdgeKind::References,
+                        EdgeKindGQL::InheritsFrom => spy_core::EdgeKind::InheritsFrom,
+                        EdgeKindGQL::Implements => spy_core::EdgeKind::Implements,
+                        EdgeKindGQL::DependsOn => spy_core::EdgeKind::DependsOn,
+                    };
+                    if let Ok(node_edges) = storage.get_edges(&node.id, core_kind) {
+                        for edge in node_edges {
+                            // Only include edges where both nodes are in our filtered set
+                            if gql_nodes.iter().any(|n| n.id == edge.to_id.as_str()) {
+                                edges.push(edge.into());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(GraphData {
+            nodes: gql_nodes,
+            edges,
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -446,7 +568,7 @@ fn matches_kind(node_kind: &NodeKind, gql_kind: &NodeKindGQL) -> bool {
 // GQL enums
 // ---------------------------------------------------------------------------
 
-#[derive(async_graphql::Enum, Copy, Clone, Eq, PartialEq)]
+#[derive(async_graphql::Enum, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum NodeKindGQL {
     Function,
     Class,
@@ -455,7 +577,7 @@ pub enum NodeKindGQL {
     Dependency,
 }
 
-#[derive(async_graphql::Enum, Copy, Clone, Eq, PartialEq)]
+#[derive(async_graphql::Enum, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum LanguageGQL {
     Rust,
     Python,
@@ -785,6 +907,29 @@ pub struct IndexStatsGQL {
     file_count: i32,
     last_indexed: Option<String>,
     last_git_sha: Option<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct EmbeddingStatusGQL {
+    total_nodes: i32,
+    processed_nodes: i32,
+    status: String,
+    started_at: i64,
+    completed_at: Option<i64>,
+}
+
+#[derive(SimpleObject)]
+pub struct GraphData {
+    nodes: Vec<Node>,
+    edges: Vec<Edge>,
+}
+
+#[derive(async_graphql::InputObject, Default)]
+pub struct GraphFilterInput {
+    file_path: Option<String>,
+    node_kinds: Option<Vec<NodeKindGQL>>,
+    languages: Option<Vec<LanguageGQL>>,
+    edge_kinds: Option<Vec<EdgeKindGQL>>,
 }
 
 fn read_file_snippet(file_path: &str, start_line: i32, end_line: i32) -> std::io::Result<String> {

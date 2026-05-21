@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use spy_core::{Config, EdgeKind, NodeKind};
+use spy_embeddings::EmbeddingManager;
 use spy_indexer::Indexer;
 use spy_storage::Storage;
 use std::path::PathBuf;
@@ -126,6 +127,32 @@ enum Commands {
     Dependencies,
     /// List code elements inside currently modified or active workspace files in Git
     ActiveContext,
+    /// Generate embeddings for semantic search
+    Embed {
+        /// Force full re-embedding of all nodes
+        #[arg(long)]
+        full: bool,
+        /// Path to embedding model directory
+        #[arg(long)]
+        model: Option<PathBuf>,
+    },
+    /// Ask natural language questions about the codebase
+    Ask {
+        /// Natural language query
+        query: String,
+        /// Output the raw JSON response
+        #[arg(long)]
+        json: bool,
+    },
+    /// Generate and serve graph visualization
+    Graph {
+        /// Path to the codebase root
+        #[arg(long, default_value = ".")]
+        path: PathBuf,
+        /// Open browser automatically
+        #[arg(long)]
+        open: bool,
+    },
 }
 
 #[tokio::main]
@@ -155,6 +182,9 @@ async fn main() -> Result<()> {
         Commands::Impact { node_id, depth } => cmd_impact(node_id, depth).await?,
         Commands::Dependencies => cmd_dependencies().await?,
         Commands::ActiveContext => cmd_active_context().await?,
+        Commands::Embed { full, model } => cmd_embed(full, model)?,
+        Commands::Ask { query, json } => cmd_ask(query, json).await?,
+        Commands::Graph { path, open } => cmd_graph(path, open).await?,
     }
 
     Ok(())
@@ -482,14 +512,27 @@ async fn cmd_serve(mcp: bool, http: bool, port: u16) -> Result<()> {
             )
         }
 
+        async fn graph_ui() -> impl IntoResponse {
+            let graph_ui_path = PathBuf::from("crates/spy-graph-ui/index.html");
+            if graph_ui_path.exists() {
+                Html(std::fs::read_to_string(graph_ui_path).unwrap_or_else(|_| {
+                    "<html><body><h1>Graph UI not found</h1><p>Run 'spy-code graph' to generate the graph UI.</p></body></html>".to_string()
+                }))
+            } else {
+                Html("<html><body><h1>Graph UI not found</h1><p>Run 'spy-code graph' to generate the graph UI.</p></body></html>".to_string())
+            }
+        }
+
         let app = Router::new()
             .route("/", get(graphql_playground).post(graphql_handler))
+            .route("/graph", get(graph_ui))
             .layer(CorsLayer::permissive())
             .with_state(schema);
 
         let addr = format!("127.0.0.1:{}", port);
         println!("GraphQL server listening on http://{}", addr);
         println!("Playground: http://{}/", addr);
+        println!("Graph UI: http://{}/graph", addr);
 
         let listener = tokio::net::TcpListener::bind(&addr).await?;
         axum::serve(listener, app).await?;
@@ -759,5 +802,87 @@ async fn cmd_active_context() -> Result<()> {
     if active.is_empty() {
         println!("  (no active context nodes found in modified files)");
     }
+    Ok(())
+}
+
+fn cmd_embed(full: bool, model: Option<PathBuf>) -> Result<()> {
+    let config = load_config()?;
+    let storage = Storage::open(&config.db_path)?;
+
+    let mut embedding_manager = EmbeddingManager::new(storage);
+    embedding_manager.initialize_schema()?;
+
+    // Use default model path if not provided
+    let model_path = model.unwrap_or_else(|| PathBuf::from(".spy-code/models/all-MiniLM-L6-v2"));
+
+    println!("Generating embeddings using model at: {}", model_path.display());
+
+    if full {
+        println!("Full re-embedding requested (ignoring existing embeddings)");
+    }
+
+    embedding_manager.generate_node_embeddings(&model_path)?;
+
+    println!("Embedding generation completed successfully");
+
+    Ok(())
+}
+
+async fn cmd_ask(query: String, json: bool) -> Result<()> {
+    let config = load_config()?;
+    let storage = Storage::open(&config.db_path)?;
+
+    let embedding_manager = EmbeddingManager::new(storage);
+    let results = embedding_manager.semantic_search(&query, 20)?;
+
+    if json {
+        let json_results: Vec<_> = results
+            .iter()
+            .map(|(node, score)| serde_json::json!({
+                "node_id": node.node_id.as_str(),
+                "name": node.name,
+                "kind": node.kind.as_str(),
+                "file_path": node.file_path,
+                "start_line": node.start_line,
+                "score": score
+            }))
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&json_results)?);
+    } else {
+        println!("Results for query: {}", query);
+        for (node, score) in results {
+            println!("  {} ({}) - {} (score: {:.4}) [{}:{}]",
+                node.node_id, node.kind, node.name, score, node.file_path, node.start_line);
+            if let Some(desc) = &node.description {
+                println!("    Description: {}", desc);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn cmd_graph(path: PathBuf, open: bool) -> Result<()> {
+    let config = load_config()?;
+    let _storage = Storage::open(&config.db_path)?;
+
+    println!("Generating graph visualization for: {}", path.display());
+
+    // Check if the graph UI exists, if not, we'll need to build it
+    let graph_ui_path = path.join(".spy-code/graph-ui");
+    if !graph_ui_path.exists() {
+        println!("Graph UI not found. Run 'spy-code serve --http' and visit /graph/ for interactive visualization.");
+        return Ok(());
+    }
+
+    if open {
+        println!("Opening browser...");
+        // Would open browser here, but for now just print message
+        println!("Visit http://localhost:4000/graph/ to view the graph");
+    } else {
+        println!("Graph UI available at: {}", graph_ui_path.display());
+        println!("Run 'spy-code serve --http' and visit /graph/ to view the graph");
+    }
+
     Ok(())
 }

@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spy-Code Graph Visualization</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/reactflow@11.10.1/dist/umd/index.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/reactflow@11.10.1/dist/style.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        #root {
+            width: 100vw;
+            height: 100vh;
+        }
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: rgba(26, 26, 46, 0.95);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            max-width: 300px;
+        }
+        .controls h3 {
+            margin: 0 0 15px 0;
+            color: #4a9eff;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+            color: #aaa;
+        }
+        .control-group input,
+        .control-group select {
+            width: 100%;
+            padding: 8px;
+            background: #2a2a4e;
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: #eee;
+            box-sizing: border-box;
+        }
+        .control-group button {
+            width: 100%;
+            padding: 10px;
+            background: #4a9eff;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .control-group button:hover {
+            background: #3a8eef;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            background: #2a2a4e;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .status.error {
+            background: #4a1a1a;
+            color: #ff6b6b;
+        }
+        .status.success {
+            background: #1a4a1a;
+            color: #6bff6b;
+        }
+        .node-details {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: rgba(26, 26, 46, 0.95);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            max-width: 400px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .node-details h3 {
+            margin: 0 0 10px 0;
+            color: #4a9eff;
+        }
+        .node-details p {
+            margin: 5px 0;
+            font-size: 13px;
+        }
+        .node-details .label {
+            color: #aaa;
+            font-size: 11px;
+        }
+        .node-details .value {
+            color: #eee;
+        }
+        .react-flow__node {
+            background: #2a2a4e;
+            border: 1px solid #4a9eff;
+            border-radius: 6px;
+            padding: 10px;
+            color: #eee;
+            font-size: 12px;
+            min-width: 150px;
+        }
+        .react-flow__node.function {
+            border-color: #4a9eff;
+        }
+        .react-flow__node.class {
+            border-color: #ff6b6b;
+        }
+        .react-flow__node.constant {
+            border-color: #6bff6b;
+        }
+        .react-flow__edge {
+            stroke: #666;
+            stroke-width: 2;
+        }
+        .react-flow__edge.selected {
+            stroke: #4a9eff;
+        }
+        .react-flow__attribution {
+            background: #1a1a2e;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+        const { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState, addEdge, MarkerType } = window.ReactFlow;
+
+        function GraphApp() {
+            const [nodes, setNodes, onNodesChange] = useNodesState([]);
+            const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+            const [selectedNode, setSelectedNode] = useState(null);
+            const [status, setStatus] = useState({ type: '', message: '' });
+            const [filters, setFilters] = useState({
+                filePath: '',
+                nodeKinds: 'all',
+                edgeKinds: 'calls'
+            });
+            const [isLoading, setIsLoading] = useState(false);
+
+            const onConnect = useCallback((params) => {
+                setEdges((eds) => addEdge({ ...params, markerEnd: { type: MarkerType.ArrowClosed } }, eds));
+            }, []);
+
+            const loadGraphData = async () => {
+                setIsLoading(true);
+                setStatus({ type: '', message: 'Loading graph data...' });
+                
+                try {
+                    const query = `
+                        query {
+                            graphData(filter: {
+                                ${filters.filePath ? `filePath: "${filters.filePath}"` : ''}
+                                ${filters.nodeKinds !== 'all' ? `nodeKinds: [${filters.nodeKinds.toUpperCase()}]` : ''}
+                                ${filters.edgeKinds !== 'all' ? `edgeKinds: [${filters.edgeKinds.toUpperCase()}]` : ''}
+                            }) {
+                                nodes {
+                                    id
+                                    kind
+                                    name
+                                    filePath
+                                    startLine
+                                    description
+                                }
+                                edges {
+                                    fromId
+                                    toId
+                                    kind
+                                    confidence
+                                }
+                            }
+                        }
+                    `;
+                    
+                    const response = await fetch('/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ query })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.errors) {
+                        throw new Error(result.errors[0].message);
+                    }
+                    
+                    const graphData = result.data.graphData;
+                    
+                    const flowNodes = graphData.nodes.map(node => ({
+                        id: node.id,
+                        type: 'default',
+                        data: { 
+                            label: node.name,
+                            ...node
+                        },
+                        className: node.kind.toLowerCase(),
+                        position: { x: Math.random() * 800, y: Math.random() * 600 }
+                    }));
+                    
+                    const flowEdges = graphData.edges.map(edge => ({
+                        id: `${edge.fromId}-${edge.toId}`,
+                        source: edge.fromId,
+                        target: edge.toId,
+                        label: edge.kind,
+                        labelStyle: { fontSize: 10, fill: '#aaa' },
+                        animated: edge.kind === 'CALLS',
+                        markerEnd: { type: MarkerType.ArrowClosed }
+                    }));
+                    
+                    setNodes(flowNodes);
+                    setEdges(flowEdges);
+                    setStatus({ type: 'success', message: `Loaded ${flowNodes.length} nodes and ${flowEdges.length} edges` });
+                } catch (error) {
+                    setStatus({ type: 'error', message: `Error: ${error.message}` });
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const onNodeClick = useCallback((event, node) => {
+                setSelectedNode(node.data);
+            }, []);
+
+            useEffect(() => {
+                loadGraphData();
+            }, []);
+
+            return (
+                <div style={{ width: '100vw', height: '100vh' }}>
+                    <div className="controls">
+                        <h3>🔍 Spy-Code Graph</h3>
+                        <div className="control-group">
+                            <label>File Path Filter</label>
+                            <input
+                                type="text"
+                                value={filters.filePath}
+                                onChange={(e) => setFilters({...filters, filePath: e.target.value})}
+                                placeholder="e.g., src/lib.rs"
+                            />
+                        </div>
+                        <div className="control-group">
+                            <label>Node Kind</label>
+                            <select
+                                value={filters.nodeKinds}
+                                onChange={(e) => setFilters({...filters, nodeKinds: e.target.value})}
+                            >
+                                <option value="all">All</option>
+                                <option value="function">Functions</option>
+                                <option value="class">Classes</option>
+                                <option value="constant">Constants</option>
+                            </select>
+                        </div>
+                        <div className="control-group">
+                            <label>Edge Kind</label>
+                            <select
+                                value={filters.edgeKinds}
+                                onChange={(e) => setFilters({...filters, edgeKinds: e.target.value})}
+                            >
+                                <option value="all">All</option>
+                                <option value="calls">Calls</option>
+                                <option value="imports">Imports</option>
+                                <option value="references">References</option>
+                            </select>
+                        </div>
+                        <div className="control-group">
+                            <button onClick={loadGraphData} disabled={isLoading}>
+                                {isLoading ? 'Loading...' : 'Load Graph'}
+                            </button>
+                        </div>
+                        {status.message && (
+                            <div className={`status ${status.type}`}>
+                                {status.message}
+                            </div>
+                        )}
+                    </div>
+
+                    {selectedNode && (
+                        <div className="node-details">
+                            <h3>📦 Node Details</h3>
+                            <p><span className="label">Name:</span> <span className="value">{selectedNode.label}</span></p>
+                            <p><span className="label">Kind:</span> <span className="value">{selectedNode.kind}</span></p>
+                            <p><span className="label">File:</span> <span className="value">{selectedNode.filePath}</span></p>
+                            <p><span className="label">Line:</span> <span className="value">{selectedNode.startLine}</span></p>
+                            {selectedNode.description && (
+                                <p><span className="label">Description:</span> <span className="value">{selectedNode.description}</span></p>
+                            )}
+                            <button onClick={() => setSelectedNode(null)} style={{ marginTop: '10px', padding: '5px 10px', background: '#4a9eff', border: 'none', borderRadius: '4px', color: 'white', cursor: 'pointer' }}>
+                                Close
+                            </button>
+                        </div>
+                    )}
+
+                    <ReactFlow
+                        nodes={nodes}
+                        edges={edges}
+                        onNodesChange={onNodesChange}
+                        onEdgesChange={onEdgesChange}
+                        onConnect={onConnect}
+                        onNodeClick={onNodeClick}
+                        fitView
+                    >
+                        <Background color="#333" gap={16} />
+                        <Controls />
+                        <MiniMap 
+                            nodeColor={(node) => {
+                                switch(node.className) {
+                                    case 'function': return '#4a9eff';
+                                    case 'class': return '#ff6b6b';
+                                    case 'constant': return '#6bff6b';
+                                    default: return '#666';
+                                }
+                            }}
+                            maskColor="rgba(0, 0, 0, 0.8)"
+                        />
+                    </ReactFlow>
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<GraphApp />);
+    </script>
+</body>
+</html>
