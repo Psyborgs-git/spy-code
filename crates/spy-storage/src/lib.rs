@@ -304,12 +304,12 @@ impl Storage {
     }
 
     pub fn delete_nodes_for_file(&mut self, file_path: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM edges_calls WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-        self.conn.execute("DELETE FROM edges_imports WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-        self.conn.execute("DELETE FROM edges_references WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-        self.conn.execute("DELETE FROM edges_inherits_from WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-        self.conn.execute("DELETE FROM edges_depends_on WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-        self.conn.execute("DELETE FROM edges_implements WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_calls WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_imports WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_references WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_inherits_from WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_depends_on WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_implements WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
 
         self.conn
             .execute("DELETE FROM nodes WHERE file_path = ?1", params![file_path])?;

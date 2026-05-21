@@ -7,9 +7,11 @@ use spy_storage::Storage;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+const GRAPH_UI_HTML: &str = include_str!("../../../crates/spy-graph-ui/index.html");
+
 #[derive(Parser)]
 #[command(name = "spy-code")]
-#[command(version = "0.1.0")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "GraphQL-style compiler for codebases", long_about = None)]
 struct Cli {
     #[command(subcommand)]
@@ -513,14 +515,7 @@ async fn cmd_serve(mcp: bool, http: bool, port: u16) -> Result<()> {
         }
 
         async fn graph_ui() -> impl IntoResponse {
-            let graph_ui_path = PathBuf::from("crates/spy-graph-ui/index.html");
-            if graph_ui_path.exists() {
-                Html(std::fs::read_to_string(graph_ui_path).unwrap_or_else(|_| {
-                    "<html><body><h1>Graph UI not found</h1><p>Run 'spy-code graph' to generate the graph UI.</p></body></html>".to_string()
-                }))
-            } else {
-                Html("<html><body><h1>Graph UI not found</h1><p>Run 'spy-code graph' to generate the graph UI.</p></body></html>".to_string())
-            }
+            Html(GRAPH_UI_HTML)
         }
 
         let app = Router::new()
@@ -867,12 +862,61 @@ async fn cmd_graph(path: PathBuf, open: bool) -> Result<()> {
     let _storage = Storage::open(&config.db_path)?;
 
     println!("Graph visualization for: {}", path.display());
-    println!("\nThe graph UI is served by the HTTP server.");
-    println!("Run 'spy-code serve --http' and visit http://127.0.0.1:4000/graph to view the graph.\n");
+    println!("Starting HTTP server with graph UI...\n");
+
+    // Start the HTTP server with graph UI
+    let storage = Arc::new(Mutex::new(_storage));
+    let schema = spy_graph::create_schema(storage);
+
+    use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
+    use axum::{
+        extract::State,
+        response::{Html, IntoResponse},
+        routing::get,
+        Router,
+    };
+    use tower_http::cors::CorsLayer;
+
+    async fn graphql_handler(
+        State(schema): State<spy_graph::SpySchema>,
+        req: GraphQLRequest,
+    ) -> GraphQLResponse {
+        schema.execute(req.into_inner()).await.into()
+    }
+
+    async fn graphql_playground() -> impl IntoResponse {
+        Html(
+            async_graphql::http::GraphiQLSource::build()
+                .endpoint("/")
+                .finish(),
+        )
+    }
+
+    async fn graph_ui() -> impl IntoResponse {
+        Html(GRAPH_UI_HTML)
+    }
+
+    let app = Router::new()
+        .route("/", get(graphql_playground).post(graphql_handler))
+        .route("/graph", get(graph_ui))
+        .layer(CorsLayer::permissive())
+        .with_state(schema);
+
+    let port = 4000;
+    let addr = format!("127.0.0.1:{}", port);
+    println!("GraphQL server listening on http://{}", addr);
+    println!("Playground: http://{}/", addr);
+    println!("Graph UI: http://{}/graph", addr);
 
     if open {
-        println!("Open your browser to: http://127.0.0.1:4000/graph");
+        println!("\nOpening browser...");
+        if let Err(e) = opener::open(format!("http://{}/graph", addr)) {
+            eprintln!("Failed to open browser: {}", e);
+        }
     }
+
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    axum::serve(listener, app).await?;
 
     Ok(())
 }
