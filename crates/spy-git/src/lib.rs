@@ -30,6 +30,8 @@ impl GitRepo {
     /// Discover the nearest git repository at or above `path`.
     ///
     /// Returns `Ok(None)` when `path` is not inside a git repository.
+    /// # Errors
+    /// Returns an error if git command fails
     pub fn discover(path: &Path) -> Result<Option<Self>> {
         let out = Command::new("git")
             .arg("-C")
@@ -41,13 +43,14 @@ impl GitRepo {
         if out.status.success() {
             let raw = String::from_utf8_lossy(&out.stdout);
             let workdir = PathBuf::from(raw.trim());
-            Ok(Some(GitRepo { workdir }))
+            Ok(Some(Self { workdir }))
         } else {
             Ok(None)
         }
     }
 
     /// Return the current HEAD SHA, or `None` when HEAD is unborn.
+    #[must_use]
     pub fn current_sha(&self) -> Option<String> {
         let out = Command::new("git")
             .arg("-C")
@@ -69,6 +72,7 @@ impl GitRepo {
     }
 
     /// Return `true` if the working tree has uncommitted changes.
+    #[must_use]
     pub fn is_dirty(&self) -> bool {
         Command::new("git")
             .arg("-C")
@@ -79,6 +83,8 @@ impl GitRepo {
             .unwrap_or(false)
     }
     /// Return the list of files that are modified, untracked, or staged.
+    /// # Errors
+    /// Returns an error if git status command fails
     pub fn get_active_files(&self) -> Result<Vec<PathBuf>> {
         let out = Command::new("git")
             .arg("-C")
@@ -112,8 +118,10 @@ impl GitRepo {
     /// Returns an error when `old_sha` is not reachable (e.g. force-pushed
     /// history or shallow clone boundary).  Callers should fall back to a full
     /// re-index in that case.
+    /// # Errors
+    /// Returns an error if git diff command fails
     pub fn diff_files_since(&self, old_sha: &str) -> Result<Vec<FileDiff>> {
-        let range = format!("{}..HEAD", old_sha);
+        let range = format!("{old_sha}..HEAD");
         let out = Command::new("git")
             .arg("-C")
             .arg(&self.workdir)
@@ -126,14 +134,16 @@ impl GitRepo {
             anyhow::bail!("git diff failed: {}", stderr.trim());
         }
 
-        parse_name_status(&String::from_utf8_lossy(&out.stdout))
+        Ok(parse_name_status(&String::from_utf8_lossy(&out.stdout)))
     }
 
     /// Return the set of file paths (absolute) changed since `git_ref`.
     ///
     /// Used by the `changedSince` GraphQL / MCP query.
+    /// # Errors
+    /// Returns an error if git diff command fails
     pub fn files_changed_since_ref(&self, git_ref: &str) -> Result<Vec<PathBuf>> {
-        let range = format!("{}..HEAD", git_ref);
+        let range = format!("{git_ref}..HEAD");
         let out = Command::new("git")
             .arg("-C")
             .arg(&self.workdir)
@@ -154,15 +164,18 @@ impl GitRepo {
     }
 
     /// The working-tree root of this repository.
+    #[must_use]
     pub fn workdir(&self) -> &Path {
         &self.workdir
     }
 
     /// Retrieve the contents of a file at a specific git reference.
+    /// # Errors
+    /// Returns an error if git show command fails
     pub fn cat_file_at_ref(&self, git_ref: &str, file_path: &Path) -> Result<String> {
         let rel_path = file_path.strip_prefix(&self.workdir).unwrap_or(file_path);
         let path_str = rel_path.to_string_lossy();
-        let target = format!("{}:{}", git_ref, path_str);
+        let target = format!("{git_ref}:{path_str}");
 
         let out = Command::new("git")
             .arg("-C")
@@ -185,7 +198,7 @@ impl GitRepo {
 // ---------------------------------------------------------------------------
 
 /// Parse `git diff --name-status` output into `FileDiff` entries.
-fn parse_name_status(output: &str) -> Result<Vec<FileDiff>> {
+fn parse_name_status(output: &str) -> Vec<FileDiff> {
     let mut diffs = Vec::new();
 
     for line in output.lines() {
@@ -197,9 +210,8 @@ fn parse_name_status(output: &str) -> Result<Vec<FileDiff>> {
         // Fields are tab-separated: <status_code>\t<path> or for renames
         // <R|C><score>\t<old_path>\t<new_path>
         let mut fields = line.splitn(3, '\t');
-        let status_code = match fields.next() {
-            Some(s) => s,
-            None => continue,
+        let Some(status_code) = fields.next() else {
+            continue;
         };
 
         if status_code.starts_with('R') || status_code.starts_with('C') {
@@ -231,7 +243,7 @@ fn parse_name_status(output: &str) -> Result<Vec<FileDiff>> {
         }
     }
 
-    Ok(diffs)
+    diffs
 }
 
 #[cfg(test)]
@@ -241,7 +253,7 @@ mod tests {
     #[test]
     fn test_parse_name_status_basic() {
         let input = "M\tsrc/main.rs\nA\tsrc/new.rs\nD\tsrc/old.rs\n";
-        let diffs = parse_name_status(input).unwrap();
+        let diffs = parse_name_status(input);
         assert_eq!(diffs.len(), 3);
         assert_eq!(diffs[0].status, FileChangeStatus::Modified);
         assert_eq!(diffs[1].status, FileChangeStatus::Added);
@@ -251,7 +263,7 @@ mod tests {
     #[test]
     fn test_parse_name_status_rename() {
         let input = "R100\told/file.rs\tnew/file.rs\n";
-        let diffs = parse_name_status(input).unwrap();
+        let diffs = parse_name_status(input);
         assert_eq!(diffs.len(), 1);
         assert!(matches!(
             &diffs[0].status,
@@ -262,7 +274,7 @@ mod tests {
 
     #[test]
     fn test_parse_name_status_empty() {
-        let diffs = parse_name_status("").unwrap();
+        let diffs = parse_name_status("");
         assert!(diffs.is_empty());
     }
 }

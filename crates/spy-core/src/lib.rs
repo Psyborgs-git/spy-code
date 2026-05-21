@@ -23,39 +23,51 @@ pub type Result<T> = std::result::Result<T, SpyError>;
 pub struct NodeId(String);
 
 impl NodeId {
+    /// Create a new NodeId from components
+    /// # Errors
+    /// Returns an error if the resulting ID is too long
     pub fn new(dir: &str, file: &str, class: &str, symbol: &str) -> Result<Self> {
         let dir = if dir.is_empty() { "_" } else { dir };
         let file = if file.is_empty() { "_" } else { file };
         let class = if class.is_empty() { "_" } else { class };
         let symbol = if symbol.is_empty() { "_" } else { symbol };
 
-        let id = format!("{}:{}:{}:{}", dir, file, class, symbol);
+        let id = format!("{dir}:{file}:{class}:{symbol}");
 
         if id.len() > 512 {
             return Err(SpyError::NodeIdTooLong(id));
         }
 
-        Ok(NodeId(id))
+        Ok(Self(id))
     }
 
+    /// Create a NodeId from a string
+    /// # Errors
+    /// Returns an error if the string is invalid or too long
     pub fn from_string(s: String) -> Result<Self> {
         if s.len() > 512 {
             return Err(SpyError::NodeIdTooLong(s));
         }
-        let parts: Vec<&str> = s.split(':').collect();
-        if parts.len() != 4 {
+        if s.split(':').count() != 4 {
             return Err(SpyError::InvalidNodeId(s));
         }
-        Ok(NodeId(s))
+        Ok(Self(s))
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
+    #[must_use]
     pub fn parts(&self) -> (&str, &str, &str, &str) {
-        let parts: Vec<&str> = self.0.split(':').collect();
-        (parts[0], parts[1], parts[2], parts[3])
+        let mut parts = self.0.split(':');
+        (
+            parts.next().unwrap_or(""),
+            parts.next().unwrap_or(""),
+            parts.next().unwrap_or(""),
+            parts.next().unwrap_or(""),
+        )
     }
 }
 
@@ -200,7 +212,13 @@ pub struct Edge {
 pub trait Resolver: Send + Sync {
     fn language(&self) -> Language;
     fn extensions(&self) -> &[&str];
+    /// Extract nodes from the file context
+    /// # Errors
+    /// Returns an error if parsing fails
     fn extract_nodes(&self, ctx: &FileContext) -> anyhow::Result<Vec<Node>>;
+    /// Extract edges from the file context
+    /// # Errors
+    /// Returns an error if edge extraction fails
     fn extract_edges(&self, ctx: &FileContext, scope: &ProjectScope) -> anyhow::Result<Vec<Edge>>;
 }
 
@@ -216,8 +234,9 @@ pub struct ProjectScope {
 }
 
 impl ProjectScope {
+    #[must_use]
     pub fn new() -> Self {
-        ProjectScope {
+        Self {
             nodes: std::collections::HashMap::new(),
         }
     }
@@ -226,10 +245,12 @@ impl ProjectScope {
         self.nodes.insert(node.node_id.to_string(), node);
     }
 
+    #[must_use]
     pub fn get_node(&self, node_id: &str) -> Option<&Node> {
         self.nodes.get(node_id)
     }
 
+    #[must_use]
     pub fn find_nodes_by_name(&self, name: &str) -> Vec<&Node> {
         self.nodes.values().filter(|n| n.name == name).collect()
     }
@@ -266,7 +287,7 @@ pub struct Config {
     pub search: SearchConfig,
 }
 
-fn default_version() -> u32 {
+const fn default_version() -> u32 {
     1
 }
 fn default_db_path() -> String {
@@ -301,7 +322,7 @@ pub struct LanguageConfig {
     pub tsconfig: Option<String>,
 }
 
-fn default_enabled() -> bool {
+const fn default_enabled() -> bool {
     true
 }
 fn default_roots() -> Vec<String> {
@@ -313,7 +334,7 @@ fn default_resolver() -> String {
 
 impl Default for LanguageConfig {
     fn default() -> Self {
-        LanguageConfig {
+        Self {
             enabled: true,
             roots: vec!["./".to_string()],
             ignore: vec![],
@@ -336,7 +357,7 @@ pub struct GitConfig {
 
 impl Default for GitConfig {
     fn default() -> Self {
-        GitConfig {
+        Self {
             enabled: true,
             track_renames: true,
             follow_symlinks: false,
@@ -355,16 +376,16 @@ pub struct IndexingConfig {
     pub fail_fast: bool,
 }
 
-fn default_max_file_size() -> u64 {
+const fn default_max_file_size() -> u64 {
     2048
 }
-fn default_parallelism() -> ParallelismConfig {
+const fn default_parallelism() -> ParallelismConfig {
     ParallelismConfig::Auto
 }
 
 impl Default for IndexingConfig {
     fn default() -> Self {
-        IndexingConfig {
+        Self {
             max_file_size_kb: 2048,
             parallelism: ParallelismConfig::Auto,
             fail_fast: false,
@@ -392,7 +413,7 @@ fn default_tokenizer() -> String {
 
 impl Default for SearchConfig {
     fn default() -> Self {
-        SearchConfig {
+        Self {
             fts_tokenizer: "unicode61".to_string(),
         }
     }
@@ -400,7 +421,7 @@ impl Default for SearchConfig {
 
 impl Default for Config {
     fn default() -> Self {
-        Config {
+        Self {
             version: 1,
             db_path: ".spy-code/graph.db".to_string(),
             languages: LanguagesConfig::default(),
