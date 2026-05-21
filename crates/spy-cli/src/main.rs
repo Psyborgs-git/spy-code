@@ -866,22 +866,12 @@ async fn cmd_graph(path: PathBuf, open: bool) -> Result<()> {
     let config = load_config()?;
     let _storage = Storage::open(&config.db_path)?;
 
-    println!("Generating graph visualization for: {}", path.display());
-
-    // Check if the graph UI exists, if not, we'll need to build it
-    let graph_ui_path = path.join(".spy-code/graph-ui");
-    if !graph_ui_path.exists() {
-        println!("Graph UI not found. Run 'spy-code serve --http' and visit /graph/ for interactive visualization.");
-        return Ok(());
-    }
+    println!("Graph visualization for: {}", path.display());
+    println!("\nThe graph UI is served by the HTTP server.");
+    println!("Run 'spy-code serve --http' and visit http://127.0.0.1:4000/graph to view the graph.\n");
 
     if open {
-        println!("Opening browser...");
-        // Would open browser here, but for now just print message
-        println!("Visit http://localhost:4000/graph/ to view the graph");
-    } else {
-        println!("Graph UI available at: {}", graph_ui_path.display());
-        println!("Run 'spy-code serve --http' and visit /graph/ to view the graph");
+        println!("Open your browser to: http://127.0.0.1:4000/graph");
     }
 
     Ok(())
