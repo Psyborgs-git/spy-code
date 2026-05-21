@@ -185,30 +185,62 @@ fn walk_for_edges(
     scope: &ProjectScope,
     edges: &mut Vec<Edge>,
 ) -> Result<()> {
-    if node.kind() == "call_expression" {
-        if let Some(func_node) = node.child_by_field_name("function") {
-            let func_text = node_text(&func_node, source);
-            let from_id = infer_containing_function(node, source, ctx)?;
-
-            if let Some(from_id) = from_id {
-                let candidates = scope.find_nodes_by_name(func_text);
-                if candidates.len() == 1 {
-                    edges.push(Edge {
-                        from_id,
-                        to_id: candidates[0].node_id.clone(),
-                        kind: EdgeKind::Calls,
-                        confidence: 1.0,
-                    });
-                } else if !candidates.is_empty() {
-                    edges.push(Edge {
-                        from_id,
-                        to_id: candidates[0].node_id.clone(),
-                        kind: EdgeKind::Calls,
-                        confidence: 0.4,
-                    });
+    match node.kind() {
+        "call_expression" => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                let func_text = node_text(&func_node, source);
+                let from_id = infer_containing_function(node, source, ctx)?;
+    
+                if let Some(from_id) = from_id {
+                    let candidates = scope.find_nodes_by_name(func_text);
+                    if candidates.len() == 1 {
+                        edges.push(Edge {
+                            from_id,
+                            to_id: candidates[0].node_id.clone(),
+                            kind: EdgeKind::Calls,
+                            confidence: 1.0,
+                        });
+                    } else if !candidates.is_empty() {
+                        edges.push(Edge {
+                            from_id,
+                            to_id: candidates[0].node_id.clone(),
+                            kind: EdgeKind::Calls,
+                            confidence: 0.4,
+                        });
+                    }
                 }
             }
         }
+        "impl_item" => {
+            if let Some(trait_node) = node.child_by_field_name("trait") {
+                if let Some(type_node) = node.child_by_field_name("type") {
+                    let trait_name = node_text(&trait_node, source);
+                    let type_name = node_text(&type_node, source);
+                    let dir = ctx.path.parent().and_then(|p| p.to_str()).unwrap_or(".");
+                    let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
+                    if let Ok(from_id) = NodeId::new(dir, file, "_", type_name) {
+                        let bare_trait = trait_name.split("::").last().unwrap_or(trait_name);
+                        let candidates = scope.find_nodes_by_name(bare_trait);
+                        if candidates.len() == 1 {
+                            edges.push(Edge {
+                                from_id: from_id.clone(),
+                                to_id: candidates[0].node_id.clone(),
+                                kind: EdgeKind::Implements,
+                                confidence: 1.0,
+                            });
+                        } else if !candidates.is_empty() {
+                            edges.push(Edge {
+                                from_id: from_id.clone(),
+                                to_id: candidates[0].node_id.clone(),
+                                kind: EdgeKind::Implements,
+                                confidence: 0.4,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
     }
 
     let mut cursor = node.walk();

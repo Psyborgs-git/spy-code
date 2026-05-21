@@ -17,48 +17,115 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Initialize a new spy.config.json in the current directory
     Init,
+    /// Index the codebase files to extract nodes and edges
     Index {
+        /// Force full re-indexing of all files
         #[arg(long)]
         full: bool,
+        /// Path to the codebase root to index
         #[arg(long, default_value = ".")]
         path: PathBuf,
     },
+    /// Run a custom GraphQL query against the indexed codebase graph
     Query {
+        /// GraphQL query string
         query: String,
+        /// Output the raw JSON response
         #[arg(long)]
         json: bool,
     },
+    /// Get details of a specific node by its ID
     Get {
+        /// The unique ID of the node to inspect
         node_id: String,
     },
+    /// Search the codebase for symbol names, descriptions, or comments
     Search {
+        /// Search query/term
         text: String,
+        /// Filter by node kind (e.g. function, class, constant)
         #[arg(long)]
         kind: Option<String>,
+        /// Use local TF-IDF semantic vector search
+        #[arg(long)]
+        semantic: bool,
+        /// Use hybrid (FTS5 + TF-IDF RRF) search
+        #[arg(long)]
+        hybrid: bool,
     },
+    /// List all incoming callers of a function
     Callers {
+        /// Unique ID of the target function
         node_id: String,
+        /// Maximum transitive call depth to traverse
         #[arg(long, default_value = "1")]
         depth: i32,
     },
+    /// List all outgoing callees of a function
     Callees {
+        /// Unique ID of the source function
         node_id: String,
+        /// Maximum transitive call depth to traverse
         #[arg(long, default_value = "1")]
         depth: i32,
     },
+    /// List all nodes that changed since a specific git reference
     Changed {
+        /// Git commit hash, branch, or reference (e.g. HEAD~1, main)
         git_ref: String,
     },
+    /// Get statistics of the codebase index
     Stats,
+    /// Serve the GraphQL API over HTTP or MCP (Model Context Protocol)
     Serve {
+        /// Start in MCP server mode for direct integration with LLM clients
         #[arg(long)]
         mcp: bool,
+        /// Start in HTTP mode with an interactive GraphiQL playground
         #[arg(long)]
         http: bool,
+        /// Port to bind the HTTP server to
         #[arg(long, default_value = "4000")]
         port: u16,
     },
+    /// List the base classes, interfaces, or traits that a node implements or inherits from
+    Bases {
+        /// Unique ID of the class, struct, or interface
+        node_id: String,
+    },
+    /// List the derived subclasses, interfaces, or structures implementing a base trait/class
+    Derived {
+        /// Unique ID of the base class, interface, or trait
+        node_id: String,
+    },
+    /// Diff symbol signatures and bodies between two git references
+    DiffSymbols {
+        /// Git reference to diff from
+        from_ref: String,
+        /// Git reference to diff to
+        to_ref: String,
+    },
+    /// Find the shortest call path between two functions in the call graph
+    CallPath {
+        /// Unique ID of the source function
+        from_id: String,
+        /// Unique ID of the target function
+        to_id: String,
+    },
+    /// Analyze the downstream impact of changing a symbol (transitive callers)
+    Impact {
+        /// Unique ID of the symbol to analyze
+        node_id: String,
+        /// Maximum traversal depth in the call graph
+        #[arg(long, default_value = "3")]
+        depth: i32,
+    },
+    /// List external project package dependencies parsed from config files
+    Dependencies,
+    /// List code elements inside currently modified or active workspace files in Git
+    ActiveContext,
 }
 
 #[tokio::main]
@@ -70,12 +137,19 @@ async fn main() -> Result<()> {
         Commands::Index { full, path } => cmd_index(full, path)?,
         Commands::Query { query, json } => cmd_query(query, json).await?,
         Commands::Get { node_id } => cmd_get(node_id).await?,
-        Commands::Search { text, kind } => cmd_search(text, kind).await?,
+        Commands::Search { text, kind, semantic, hybrid } => cmd_search(text, kind, semantic, hybrid).await?,
         Commands::Callers { node_id, depth } => cmd_callers(node_id, depth).await?,
         Commands::Callees { node_id, depth } => cmd_callees(node_id, depth).await?,
         Commands::Changed { git_ref } => cmd_changed(git_ref).await?,
         Commands::Stats => cmd_stats().await?,
         Commands::Serve { mcp, http, port } => cmd_serve(mcp, http, port).await?,
+        Commands::Bases { node_id } => cmd_bases(node_id).await?,
+        Commands::Derived { node_id } => cmd_derived(node_id).await?,
+        Commands::DiffSymbols { from_ref, to_ref } => cmd_diff_symbols(from_ref, to_ref).await?,
+        Commands::CallPath { from_id, to_id } => cmd_call_path(from_id, to_id).await?,
+        Commands::Impact { node_id, depth } => cmd_impact(node_id, depth).await?,
+        Commands::Dependencies => cmd_dependencies().await?,
+        Commands::ActiveContext => cmd_active_context().await?,
     }
 
     Ok(())
@@ -152,32 +226,120 @@ async fn cmd_get(node_id: String) -> Result<()> {
     Ok(())
 }
 
-async fn cmd_search(text: String, kind: Option<String>) -> Result<()> {
-    let config = load_config()?;
-    let storage = Storage::open(&config.db_path)?;
-
-    let results = storage.search_nodes(&text, 20)?;
-
-    let results: Vec<_> = if let Some(kind_str) = kind {
-        let kind = match kind_str.as_str() {
-            "function" | "fn" => NodeKind::Function,
-            "class" => NodeKind::Class,
-            "constant" | "const" => NodeKind::Constant,
-            _ => anyhow::bail!("Invalid kind: {}", kind_str),
+async fn cmd_search(text: String, kind: Option<String>, semantic: bool, hybrid: bool) -> Result<()> {
+    let limit = 20;
+    if semantic {
+        let query = format!(
+            r#"query {{
+                semanticSearch(query: "{}", limit: {}) {{
+                    node {{
+                        id
+                        kind
+                        name
+                        filePath
+                        startLine
+                    }}
+                    score
+                }}
+            }}"#,
+            text.replace('"', "\\\""), limit
+        );
+        let data = execute_query(&query).await?;
+        let results = data["semanticSearch"]
+            .as_array()
+            .context("Invalid response format")?;
+        
+        let filtered_results: Vec<_> = if let Some(ref kind_str) = kind {
+            results.iter().filter(|r| {
+                r["node"]["kind"].as_str().map(|k| k.to_lowercase()) == Some(kind_str.to_lowercase())
+            }).collect()
+        } else {
+            results.iter().collect()
         };
-        results
-            .into_iter()
-            .filter(|(n, _)| n.kind == kind)
-            .collect()
+
+        println!("Found {} semantic results:", filtered_results.len());
+        for res in filtered_results {
+            let node = &res["node"];
+            println!(
+                "  {} ({}) - {} (score: {:.4}) [{}:{}]",
+                node["id"].as_str().unwrap_or(""),
+                node["kind"].as_str().unwrap_or(""),
+                node["name"].as_str().unwrap_or(""),
+                res["score"].as_f64().unwrap_or(0.0),
+                node["filePath"].as_str().unwrap_or(""),
+                node["startLine"].as_i64().unwrap_or(0)
+            );
+        }
+    } else if hybrid {
+        let query = format!(
+            r#"query {{
+                hybridSearch(query: "{}", limit: {}) {{
+                    node {{
+                        id
+                        kind
+                        name
+                        filePath
+                        startLine
+                    }}
+                    score
+                }}
+            }}"#,
+            text.replace('"', "\\\""), limit
+        );
+        let data = execute_query(&query).await?;
+        let results = data["hybridSearch"]
+            .as_array()
+            .context("Invalid response format")?;
+        
+        let filtered_results: Vec<_> = if let Some(ref kind_str) = kind {
+            results.iter().filter(|r| {
+                r["node"]["kind"].as_str().map(|k| k.to_lowercase()) == Some(kind_str.to_lowercase())
+            }).collect()
+        } else {
+            results.iter().collect()
+        };
+
+        println!("Found {} hybrid results:", filtered_results.len());
+        for res in filtered_results {
+            let node = &res["node"];
+            println!(
+                "  {} ({}) - {} (score: {:.4}) [{}:{}]",
+                node["id"].as_str().unwrap_or(""),
+                node["kind"].as_str().unwrap_or(""),
+                node["name"].as_str().unwrap_or(""),
+                res["score"].as_f64().unwrap_or(0.0),
+                node["filePath"].as_str().unwrap_or(""),
+                node["startLine"].as_i64().unwrap_or(0)
+            );
+        }
     } else {
-        results
-    };
+        let config = load_config()?;
+        let storage = Storage::open(&config.db_path)?;
+        let results = storage.search_nodes(&text, limit)?;
+        let results: Vec<_> = if let Some(kind_str) = kind {
+            let target_kind = match kind_str.as_str() {
+                "function" | "fn" | "FUNCTION" => NodeKind::Function,
+                "class" | "CLASS" => NodeKind::Class,
+                "constant" | "const" | "CONSTANT" => NodeKind::Constant,
+                "dependency" | "DEPENDENCY" => NodeKind::Dependency,
+                _ => anyhow::bail!("Invalid kind: {}", kind_str),
+            };
+            results
+                .into_iter()
+                .filter(|(n, _)| n.kind == target_kind)
+                .collect()
+        } else {
+            results
+        };
 
-    println!("Found {} results:", results.len());
-    for (node, score) in results {
-        println!("  {} ({}) - {} (score: {:.2})", node.node_id, node.kind, node.name, score);
+        println!("Found {} keyword results:", results.len());
+        for (node, score) in results {
+            println!(
+                "  {} ({}) - {} (score: {:.4}) [{}:{}]",
+                node.node_id, node.kind, node.name, score, node.file_path, node.start_line
+            );
+        }
     }
-
     Ok(())
 }
 
@@ -185,7 +347,7 @@ async fn cmd_callers(node_id: String, depth: i32) -> Result<()> {
     let config = load_config()?;
     let storage = Storage::open(&config.db_path)?;
 
-    let edges = storage.get_incoming_edges(&node_id, EdgeKind::Calls)?;
+    let edges = storage.get_incoming_edges_transitive(&node_id, EdgeKind::Calls, depth)?;
 
     println!("Callers of {} (depth {}):", node_id, depth);
     for edge in edges {
@@ -199,7 +361,7 @@ async fn cmd_callees(node_id: String, depth: i32) -> Result<()> {
     let config = load_config()?;
     let storage = Storage::open(&config.db_path)?;
 
-    let edges = storage.get_edges(&node_id, EdgeKind::Calls)?;
+    let edges = storage.get_edges_transitive(&node_id, EdgeKind::Calls, depth)?;
 
     println!("Callees of {} (depth {}):", node_id, depth);
     for edge in edges {
@@ -294,9 +456,11 @@ async fn cmd_serve(mcp: bool, http: bool, port: u16) -> Result<()> {
         }
 
         async fn graphql_playground() -> impl IntoResponse {
-            Html(async_graphql::http::playground_source(
-                async_graphql::http::GraphQLPlaygroundConfig::new("/"),
-            ))
+            Html(
+                async_graphql::http::GraphiQLSource::build()
+                    .endpoint("/")
+                    .finish(),
+            )
         }
 
         let app = Router::new()
@@ -320,4 +484,241 @@ fn load_config() -> Result<Config> {
         .context("Failed to read spy.config.json. Run 'spy-code init' first.")?;
     let config: Config = serde_json::from_str(&config_str)?;
     Ok(config)
+}
+
+async fn execute_query(query_str: &str) -> Result<serde_json::Value> {
+    let config = load_config()?;
+    let storage = Storage::open(&config.db_path)?;
+    let storage = Arc::new(Mutex::new(storage));
+    let schema = spy_graph::create_schema(storage);
+    let result = schema.execute(query_str).await;
+    if !result.errors.is_empty() {
+        anyhow::bail!("GraphQL Error: {:?}", result.errors);
+    }
+    let data = serde_json::to_value(result.data)?;
+    Ok(data)
+}
+
+async fn cmd_bases(node_id: String) -> Result<()> {
+    let query = format!(
+        r#"query {{
+            node(id: "{}") {{
+                bases {{
+                    id
+                    kind
+                    name
+                    filePath
+                    startLine
+                }}
+            }}
+        }}"#,
+        node_id.replace('"', "\\\"")
+    );
+    let data = execute_query(&query).await?;
+    let node = &data["node"];
+    if node.is_null() {
+        println!("Node not found: {}", node_id);
+        return Ok(());
+    }
+    let bases = node["bases"].as_array().context("Invalid response format")?;
+    println!("Base classes/interfaces/traits of {}:", node_id);
+    for base in bases {
+        println!(
+            "  {} ({}) - {} [{}:{}]",
+            base["id"].as_str().unwrap_or(""),
+            base["kind"].as_str().unwrap_or(""),
+            base["name"].as_str().unwrap_or(""),
+            base["filePath"].as_str().unwrap_or(""),
+            base["startLine"].as_i64().unwrap_or(0)
+        );
+    }
+    if bases.is_empty() {
+        println!("  (none found)");
+    }
+    Ok(())
+}
+
+async fn cmd_derived(node_id: String) -> Result<()> {
+    let query = format!(
+        r#"query {{
+            node(id: "{}") {{
+                derived {{
+                    id
+                    kind
+                    name
+                    filePath
+                    startLine
+                }}
+            }}
+        }}"#,
+        node_id.replace('"', "\\\"")
+    );
+    let data = execute_query(&query).await?;
+    let node = &data["node"];
+    if node.is_null() {
+        println!("Node not found: {}", node_id);
+        return Ok(());
+    }
+    let derived = node["derived"].as_array().context("Invalid response format")?;
+    println!("Derived classes/structs implementing {}:", node_id);
+    for der in derived {
+        println!(
+            "  {} ({}) - {} [{}:{}]",
+            der["id"].as_str().unwrap_or(""),
+            der["kind"].as_str().unwrap_or(""),
+            der["name"].as_str().unwrap_or(""),
+            der["filePath"].as_str().unwrap_or(""),
+            der["startLine"].as_i64().unwrap_or(0)
+        );
+    }
+    if derived.is_empty() {
+        println!("  (none found)");
+    }
+    Ok(())
+}
+
+async fn cmd_diff_symbols(from_ref: String, to_ref: String) -> Result<()> {
+    let query = format!(
+        r#"query {{
+            diffSymbols(fromRef: "{}", toRef: "{}") {{
+                filePath
+                symbolName
+                changeType
+            }}
+        }}"#,
+        from_ref.replace('"', "\\\""), to_ref.replace('"', "\\\"")
+    );
+    let data = execute_query(&query).await?;
+    let diffs = data["diffSymbols"].as_array().context("Invalid response format")?;
+    println!("Symbol diffs between {} and {}:", from_ref, to_ref);
+    for diff in diffs {
+        println!(
+            "  [{}] {}::{}",
+            diff["changeType"].as_str().unwrap_or(""),
+            diff["filePath"].as_str().unwrap_or(""),
+            diff["symbolName"].as_str().unwrap_or("")
+        );
+    }
+    if diffs.is_empty() {
+        println!("  (no symbol-level differences found)");
+    }
+    Ok(())
+}
+
+async fn cmd_call_path(from_id: String, to_id: String) -> Result<()> {
+    let query = format!(
+        r#"query {{
+            callPath(sourceNodeId: "{}", targetNodeId: "{}") {{
+                fromId
+                toId
+                confidence
+            }}
+        }}"#,
+        from_id.replace('"', "\\\""), to_id.replace('"', "\\\"")
+    );
+    let data = execute_query(&query).await?;
+    let path = data["callPath"].as_array().context("Invalid response format")?;
+    println!("Shortest call path from {} to {}:", from_id, to_id);
+    for edge in path {
+        println!(
+            "  {} -> {} (confidence: {:.2})",
+            edge["fromId"].as_str().unwrap_or(""),
+            edge["toId"].as_str().unwrap_or(""),
+            edge["confidence"].as_f64().unwrap_or(0.0)
+        );
+    }
+    if path.is_empty() {
+        println!("  (no call path found)");
+    }
+    Ok(())
+}
+
+async fn cmd_impact(node_id: String, depth: i32) -> Result<()> {
+    let query = format!(
+        r#"query {{
+            impactedSymbols(nodeId: "{}", maxDepth: {}) {{
+                id
+                kind
+                name
+                filePath
+                startLine
+            }}
+        }}"#,
+        node_id.replace('"', "\\\""), depth
+    );
+    let data = execute_query(&query).await?;
+    let symbols = data["impactedSymbols"].as_array().context("Invalid response format")?;
+    println!("Downstream impacted symbols for {} (depth {}):", node_id, depth);
+    for node in symbols {
+        println!(
+            "  {} ({}) - {} [{}:{}]",
+            node["id"].as_str().unwrap_or(""),
+            node["kind"].as_str().unwrap_or(""),
+            node["name"].as_str().unwrap_or(""),
+            node["filePath"].as_str().unwrap_or(""),
+            node["startLine"].as_i64().unwrap_or(0)
+        );
+    }
+    if symbols.is_empty() {
+        println!("  (none found)");
+    }
+    Ok(())
+}
+
+async fn cmd_dependencies() -> Result<()> {
+    let query = r#"query {
+        projectDependencies {
+            id
+            name
+            description
+            filePath
+        }
+    }"#;
+    let data = execute_query(query).await?;
+    let deps = data["projectDependencies"].as_array().context("Invalid response format")?;
+    println!("External project dependencies:");
+    for dep in deps {
+        println!(
+            "  {} - {} ({}) [{}]",
+            dep["id"].as_str().unwrap_or(""),
+            dep["name"].as_str().unwrap_or(""),
+            dep["description"].as_str().unwrap_or(""),
+            dep["filePath"].as_str().unwrap_or("")
+        );
+    }
+    if deps.is_empty() {
+        println!("  (none found)");
+    }
+    Ok(())
+}
+
+async fn cmd_active_context() -> Result<()> {
+    let query = r#"query {
+        activeContext {
+            id
+            kind
+            name
+            filePath
+            startLine
+            endLine
+        }
+    }"#;
+    let data = execute_query(query).await?;
+    let active = data["activeContext"].as_array().context("Invalid response format")?;
+    println!("Active workspace context (nodes in modified files):");
+    for node in active {
+        println!(
+            "  {} ({}) - {} [{}:{}-{}]",
+            node["id"].as_str().unwrap_or(""),
+            node["kind"].as_str().unwrap_or(""),
+            node["name"].as_str().unwrap_or(""),
+            node["filePath"].as_str().unwrap_or(""),
+            node["startLine"].as_i64().unwrap_or(0),
+            node["endLine"].as_i64().unwrap_or(0)
+        );
+    }
+    if active.is_empty() {
+        println!("  (no active context nodes found in modified files)");
+    }
+    Ok(())
 }

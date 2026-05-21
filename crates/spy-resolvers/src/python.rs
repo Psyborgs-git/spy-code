@@ -309,6 +309,41 @@ fn walk_for_edges(
                 }
             }
         }
+        "class_definition" => {
+            if let Some(superclasses_node) = node.child_by_field_name("superclasses") {
+                let name_node = node.child_by_field_name("name");
+                if let Some(name_node) = name_node {
+                    let class_name = node_text(&name_node, source);
+                    let dir = ctx.path.parent().and_then(|p| p.to_str()).unwrap_or(".");
+                    let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
+                    if let Ok(from_id) = NodeId::new(dir, file, "_", class_name) {
+                        let mut cursor = superclasses_node.walk();
+                        for child in superclasses_node.children(&mut cursor) {
+                            if child.kind() == "identifier" || child.kind() == "attribute" {
+                                let base_name = node_text(&child, source);
+                                let bare_name = base_name.split('.').last().unwrap_or(base_name);
+                                let candidates = scope.find_nodes_by_name(bare_name);
+                                if candidates.len() == 1 {
+                                    edges.push(Edge {
+                                        from_id: from_id.clone(),
+                                        to_id: candidates[0].node_id.clone(),
+                                        kind: EdgeKind::InheritsFrom,
+                                        confidence: 1.0,
+                                    });
+                                } else if !candidates.is_empty() {
+                                    edges.push(Edge {
+                                        from_id: from_id.clone(),
+                                        to_id: candidates[0].node_id.clone(),
+                                        kind: EdgeKind::InheritsFrom,
+                                        confidence: 0.4,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         "import_statement" | "import_from_statement" => {
             // Emit import edges from a file-level sentinel node (future work)
             // For now, skip.

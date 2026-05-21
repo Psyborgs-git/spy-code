@@ -74,6 +74,34 @@ impl GitRepo {
             .map(|out| !out.stdout.is_empty())
             .unwrap_or(false)
     }
+    /// Return the list of files that are modified, untracked, or staged.
+    pub fn get_active_files(&self) -> Result<Vec<PathBuf>> {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(&self.workdir)
+            .args(["status", "--porcelain"])
+            .output()
+            .context("Failed to run git status")?;
+
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            anyhow::bail!("git status failed: {}", stderr.trim());
+        }
+
+        let mut files = Vec::new();
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            if line.len() > 3 {
+                let path_part = &line[3..];
+                if let Some(arrow_idx) = path_part.find(" -> ") {
+                    let new_path = &path_part[arrow_idx + 4..];
+                    files.push(self.workdir.join(new_path.trim().trim_matches('"')));
+                } else {
+                    files.push(self.workdir.join(path_part.trim().trim_matches('"')));
+                }
+            }
+        }
+        Ok(files)
+    }
 
     /// Return the list of files that differ between `old_sha` and HEAD.
     ///
@@ -124,6 +152,27 @@ impl GitRepo {
     /// The working-tree root of this repository.
     pub fn workdir(&self) -> &Path {
         &self.workdir
+    }
+
+    /// Retrieve the contents of a file at a specific git reference.
+    pub fn cat_file_at_ref(&self, git_ref: &str, file_path: &Path) -> Result<String> {
+        let rel_path = file_path.strip_prefix(&self.workdir).unwrap_or(file_path);
+        let path_str = rel_path.to_string_lossy();
+        let target = format!("{}:{}", git_ref, path_str);
+        
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(&self.workdir)
+            .args(["show", &target])
+            .output()
+            .context("Failed to spawn git show")?;
+
+        if out.status.success() {
+            Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+        } else {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            anyhow::bail!("git show failed: {}", stderr.trim());
+        }
     }
 }
 

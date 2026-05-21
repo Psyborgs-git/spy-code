@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spy-code-cli"
+version = "0.1.0"
+description = "GraphQL-style compiler for codebases"
+readme = "README.md"
+requires-python = ">=3.7"
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/Psyborgs-git/spy-code"
+Repository = "https://github.com/Psyborgs-git/spy-code.git"
+
+[project.scripts]
+spy-code = "spy_code:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["spy_code*"]
+exclude = []

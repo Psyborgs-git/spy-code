@@ -79,6 +79,31 @@ impl Storage {
             
             CREATE INDEX IF NOT EXISTS idx_refs_to ON edges_references(to_id);
             
+            CREATE TABLE IF NOT EXISTS edges_inherits_from (
+                from_id     TEXT NOT NULL,
+                to_id       TEXT NOT NULL,
+                confidence  REAL NOT NULL DEFAULT 1.0,
+                PRIMARY KEY (from_id, to_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_inherits_from_to ON edges_inherits_from(to_id);
+
+            CREATE TABLE IF NOT EXISTS edges_implements (
+                from_id     TEXT NOT NULL,
+                to_id       TEXT NOT NULL,
+                confidence  REAL NOT NULL DEFAULT 1.0,
+                PRIMARY KEY (from_id, to_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_implements_to ON edges_implements(to_id);
+
+            
+            CREATE TABLE IF NOT EXISTS edges_depends_on (
+                from_id     TEXT NOT NULL,
+                to_id       TEXT NOT NULL,
+                confidence  REAL NOT NULL DEFAULT 1.0,
+                PRIMARY KEY (from_id, to_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_depends_on_to ON edges_depends_on(to_id);
+
             CREATE TABLE IF NOT EXISTS files (
                 path           TEXT PRIMARY KEY,
                 language       TEXT NOT NULL,
@@ -258,6 +283,13 @@ impl Storage {
     }
     
     pub fn delete_nodes_for_file(&mut self, file_path: &str) -> Result<()> {
+        self.conn.execute("DELETE FROM edges_calls WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_imports WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_references WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_inherits_from WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_depends_on WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        self.conn.execute("DELETE FROM edges_implements WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+
         self.conn.execute(
             "DELETE FROM nodes WHERE file_path = ?1",
             params![file_path],
@@ -521,12 +553,64 @@ impl Storage {
         Ok(results)
     }
 
+    
+    pub fn find_shortest_path(&self, source_id: &str, target_id: &str, kind: EdgeKind) -> Result<Vec<Edge>> {
+        let mut queue = std::collections::VecDeque::new();
+        let mut visited = std::collections::HashSet::new();
+        let mut parent_map = std::collections::HashMap::new();
+
+        queue.push_back(source_id.to_string());
+        visited.insert(source_id.to_string());
+
+        let mut found = false;
+        
+        while let Some(current_id) = queue.pop_front() {
+            if current_id == target_id {
+                found = true;
+                break;
+            }
+            
+            if let Ok(edges) = self.get_edges(&current_id, kind) {
+                for edge in edges {
+                    let to_id_str = edge.to_id.as_str().to_string();
+                    if !visited.contains(&to_id_str) {
+                        visited.insert(to_id_str.clone());
+                        parent_map.insert(to_id_str.clone(), (current_id.clone(), edge));
+                        queue.push_back(to_id_str);
+                    }
+                }
+            }
+        }
+        
+        if !found {
+            return Ok(Vec::new());
+        }
+        
+        let mut path = Vec::new();
+        let mut current = target_id.to_string();
+        
+        while current != source_id {
+            if let Some((parent_id, edge)) = parent_map.remove(&current) {
+                path.push(edge);
+                current = parent_id;
+            } else {
+                break;
+            }
+        }
+        
+        path.reverse();
+        Ok(path)
+    }
+
     pub fn get_stats(&self) -> Result<IndexStats> {
         let node_count: i64 = self.conn.query_row("SELECT COUNT(*) FROM nodes", [], |row| row.get(0))?;
         let edge_count: i64 = self.conn.query_row(
             "SELECT (SELECT COUNT(*) FROM edges_calls) +
                     (SELECT COUNT(*) FROM edges_imports) +
-                    (SELECT COUNT(*) FROM edges_references)",
+                    (SELECT COUNT(*) FROM edges_references) +
+                    (SELECT COUNT(*) FROM edges_inherits_from) +
+                    (SELECT COUNT(*) FROM edges_implements) +
+                    (SELECT COUNT(*) FROM edges_depends_on)",
             [],
             |row| row.get(0)
         )?;
@@ -539,6 +623,106 @@ impl Storage {
             file_count: file_count as usize,
             last_git_sha,
         })
+    }
+
+    pub fn get_all_nodes(&self) -> Result<Vec<Node>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT node_id, kind, name, description, signatures, language, file_path, start_line, end_line, content_hash, git_sha, renamed_from FROM nodes"
+        )?;
+        
+        let node_iter = stmt.query_map([], |row| {
+            let signatures_json: String = row.get(4)?;
+            let signatures = serde_json::from_str(&signatures_json).unwrap_or_default();
+            
+            let kind_str: String = row.get(1)?;
+            let kind = match kind_str.as_str() {
+                "function" => spy_core::NodeKind::Function,
+                "class" => spy_core::NodeKind::Class,
+                "constant" => spy_core::NodeKind::Constant,
+                _ => spy_core::NodeKind::Function,
+            };
+            
+            let lang_str: String = row.get(5)?;
+            let language = match lang_str.as_str() {
+                "rust" => spy_core::Language::Rust,
+                "python" => spy_core::Language::Python,
+                "typescript" => spy_core::Language::TypeScript,
+                "javascript" => spy_core::Language::JavaScript,
+                "go" => spy_core::Language::Go,
+                _ => spy_core::Language::Rust,
+            };
+
+            Ok(Node {
+                node_id: NodeId::from_string(row.get(0)?).unwrap_or_else(|_| NodeId::new("_", "_", "_", "_").unwrap()),
+                kind,
+                name: row.get(2)?,
+                description: row.get(3)?,
+                signatures,
+                language,
+                file_path: row.get(6)?,
+                start_line: row.get(7)?,
+                end_line: row.get(8)?,
+                content_hash: row.get(9)?,
+                git_sha: row.get(10)?,
+                renamed_from: row.get::<_, Option<String>>(11)?.and_then(|s| NodeId::from_string(s).ok()),
+            })
+        })?;
+        
+        let mut nodes = Vec::new();
+        for node in node_iter {
+            nodes.push(node?);
+        }
+        Ok(nodes)
+    }
+
+    pub fn get_edges_transitive(&self, node_id: &str, kind: EdgeKind, max_depth: i32) -> Result<Vec<Edge>> {
+        let mut results = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+        let mut queue = std::collections::VecDeque::new();
+        
+        queue.push_back((node_id.to_string(), 0));
+        visited.insert(node_id.to_string());
+        
+        while let Some((current_id, depth)) = queue.pop_front() {
+            if depth >= max_depth { continue; }
+            
+            if let Ok(edges) = self.get_edges(&current_id, kind) {
+                for edge in edges {
+                    let to_id_str = edge.to_id.as_str().to_string();
+                    if !visited.contains(&to_id_str) {
+                        visited.insert(to_id_str.clone());
+                        queue.push_back((to_id_str, depth + 1));
+                        results.push(edge);
+                    }
+                }
+            }
+        }
+        Ok(results)
+    }
+
+    pub fn get_incoming_edges_transitive(&self, node_id: &str, kind: EdgeKind, max_depth: i32) -> Result<Vec<Edge>> {
+        let mut results = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+        let mut queue = std::collections::VecDeque::new();
+        
+        queue.push_back((node_id.to_string(), 0));
+        visited.insert(node_id.to_string());
+        
+        while let Some((current_id, depth)) = queue.pop_front() {
+            if depth >= max_depth { continue; }
+            
+            if let Ok(edges) = self.get_incoming_edges(&current_id, kind) {
+                for edge in edges {
+                    let from_id_str = edge.from_id.as_str().to_string();
+                    if !visited.contains(&from_id_str) {
+                        visited.insert(from_id_str.clone());
+                        queue.push_back((from_id_str, depth + 1));
+                        results.push(edge);
+                    }
+                }
+            }
+        }
+        Ok(results)
     }
 }
 
@@ -622,5 +806,4 @@ mod tests {
         assert!(!results.is_empty());
         
         Ok(())
-    }
-}
+    }}

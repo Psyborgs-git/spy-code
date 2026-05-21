@@ -1,2 +1,14 @@
 target/
 .spy-code/
+
+# NPM build/test artifacts
+npm/bin/spy-code
+npm/bin/spy-code.exe
+
+# Python build/test artifacts
+python-package/spy_code/spy-code
+python-package/spy_code/spy-code.exe
+python-package/dist/
+python-package/build/
+python-package/*.egg-info/
+

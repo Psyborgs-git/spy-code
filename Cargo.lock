@@ -1598,6 +1598,8 @@ dependencies = [
  "serde_json",
  "spy-core",
  "spy-git",
+ "spy-parser",
+ "spy-resolvers",
  "spy-storage",
  "tokio",
  "tower",
@@ -1610,6 +1612,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "blake3",
+ "serde",
+ "serde_json",
  "spy-core",
  "spy-git",
  "spy-parser",

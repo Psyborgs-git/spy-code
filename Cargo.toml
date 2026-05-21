@@ -16,7 +16,7 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/yourusername/spy-code"
+repository = "https://github.com/Psyborgs-git/spy-code"
 
 [workspace.dependencies]
 # Core types

@@ -94,7 +94,7 @@ fn walk_nodes(
                 });
             }
         }
-        "class_declaration" | "abstract_class_declaration" => {
+        "class_declaration" | "abstract_class_declaration" | "interface_declaration" => {
             if let Some(name_node) = node.child_by_field_name("name") {
                 let name = node_text(&name_node, source);
                 let description = extract_jsdoc(node, source);
@@ -264,29 +264,86 @@ fn walk_for_edges(
     scope: &ProjectScope,
     edges: &mut Vec<Edge>,
 ) -> Result<()> {
-    if node.kind() == "call_expression" {
-        if let Some(func_node) = node.child_by_field_name("function") {
-            let func_text = node_text(&func_node, source);
-            let bare = func_text.split('.').last().unwrap_or(func_text);
-            if let Some(from_id) = infer_containing_function(node, source, ctx)? {
-                let candidates = scope.find_nodes_by_name(bare);
-                if candidates.len() == 1 {
-                    edges.push(Edge {
-                        from_id,
-                        to_id: candidates[0].node_id.clone(),
-                        kind: EdgeKind::Calls,
-                        confidence: 1.0,
-                    });
-                } else if !candidates.is_empty() {
-                    edges.push(Edge {
-                        from_id,
-                        to_id: candidates[0].node_id.clone(),
-                        kind: EdgeKind::Calls,
-                        confidence: 0.4,
-                    });
+    match node.kind() {
+        "call_expression" => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                let func_text = node_text(&func_node, source);
+                let bare = func_text.split('.').last().unwrap_or(func_text);
+                if let Some(from_id) = infer_containing_function(node, source, ctx)? {
+                    let candidates = scope.find_nodes_by_name(bare);
+                    if candidates.len() == 1 {
+                        edges.push(Edge {
+                            from_id,
+                            to_id: candidates[0].node_id.clone(),
+                            kind: EdgeKind::Calls,
+                            confidence: 1.0,
+                        });
+                    } else if !candidates.is_empty() {
+                        edges.push(Edge {
+                            from_id,
+                            to_id: candidates[0].node_id.clone(),
+                            kind: EdgeKind::Calls,
+                            confidence: 0.4,
+                        });
+                    }
                 }
             }
         }
+        "class_declaration" | "abstract_class_declaration" | "interface_declaration" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                let class_name = node_text(&name_node, source);
+                let dir = ctx.path.parent().and_then(|p| p.to_str()).unwrap_or(".");
+                let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
+                if let Ok(from_id) = NodeId::new(dir, file, "_", class_name) {
+                    let mut cursor = node.walk();
+                    for child in node.children(&mut cursor) {
+                        if child.kind() == "class_heritage" || child.kind() == "extends_clause" || child.kind() == "implements_clause" {
+                            let mut handle_heritage_clause = |clause: &TSNode, kind: EdgeKind| {
+                                let mut c_cursor = clause.walk();
+                                for ext_node in clause.children(&mut c_cursor) {
+                                    if ext_node.kind() == "identifier" || ext_node.kind() == "type_identifier" || ext_node.kind() == "member_expression" {
+                                        let ext_name = node_text(&ext_node, source);
+                                        let bare_name = ext_name.split('.').last().unwrap_or(ext_name);
+                                        let candidates = scope.find_nodes_by_name(bare_name);
+                                        if candidates.len() == 1 {
+                                            edges.push(Edge {
+                                                from_id: from_id.clone(),
+                                                to_id: candidates[0].node_id.clone(),
+                                                kind,
+                                                confidence: 1.0,
+                                            });
+                                        } else if !candidates.is_empty() {
+                                            edges.push(Edge {
+                                                from_id: from_id.clone(),
+                                                to_id: candidates[0].node_id.clone(),
+                                                kind,
+                                                confidence: 0.4,
+                                            });
+                                        }
+                                    }
+                                }
+                            };
+                            
+                            if child.kind() == "class_heritage" {
+                                let mut h_cursor = child.walk();
+                                for hc in child.children(&mut h_cursor) {
+                                    if hc.kind() == "extends_clause" {
+                                        handle_heritage_clause(&hc, EdgeKind::InheritsFrom);
+                                    } else if hc.kind() == "implements_clause" {
+                                        handle_heritage_clause(&hc, EdgeKind::Implements);
+                                    }
+                                }
+                            } else if child.kind() == "extends_clause" {
+                                handle_heritage_clause(&child, EdgeKind::InheritsFrom);
+                            } else if child.kind() == "implements_clause" {
+                                handle_heritage_clause(&child, EdgeKind::Implements);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
     }
 
     let mut cursor = node.walk();
@@ -313,7 +370,7 @@ fn infer_containing_function(
     let mut class_name = "_".to_string();
 
     while let Some(parent) = current {
-        if matches!(parent.kind(), "class_declaration" | "abstract_class_declaration") {
+        if matches!(parent.kind(), "class_declaration" | "abstract_class_declaration" | "interface_declaration") {
             if let Some(n) = parent.child_by_field_name("name") {
                 class_name = node_text(&n, source).to_string();
             }

@@ -1,0 +1,29 @@
+{
+  "name": "spy-code",
+  "version": "0.1.0",
+  "description": "GraphQL-style compiler for codebases",
+  "main": "bin/index.js",
+  "bin": {
+    "spy-code": "bin/index.js"
+  },
+  "scripts": {
+    "install": "node install.js"
+  },
+  "keywords": [
+    "graphql",
+    "compiler",
+    "codebase",
+    "mcp",
+    "mcp-server",
+    "cli"
+  ],
+  "author": "Psyborgs-git",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "files": [
+    "bin/index.js",
+    "install.js"
+  ]
+}

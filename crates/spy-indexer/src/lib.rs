@@ -29,6 +29,10 @@ impl Indexer {
 
         // Pass 1 — extract nodes from each file and build project scope
         let mut scope = ProjectScope::new();
+        for node in self.storage.get_all_nodes()? {
+            scope.add_node(node);
+        }
+
         for file_path in &files_to_parse {
             if let Some(lang) = detect_language(file_path) {
                 stats.files_parsed += 1;
@@ -40,6 +44,7 @@ impl Indexer {
                         // Remove stale nodes for this file then insert fresh ones
                         self.storage
                             .delete_nodes_for_file(&file_path.to_string_lossy())?;
+                        scope.remove_nodes_for_file(&file_path.to_string_lossy());
 
                         for node in nodes {
                             scope.add_node(node.clone());
@@ -103,6 +108,8 @@ impl Indexer {
                 self.storage.set_meta("last_git_sha", &stored_sha)?;
             }
         }
+
+        self.index_dependencies(root_path)?;
 
         Ok(stats)
     }
@@ -273,6 +280,148 @@ impl Indexer {
         let resolver =
             spy_resolvers::get_resolver(lang).context("No resolver available for language")?;
         resolver.extract_edges(&ctx, scope)
+    }
+
+    fn index_dependencies(&mut self, root_path: &Path) -> Result<()> {
+        let cargo_toml = root_path.join("Cargo.toml");
+        if cargo_toml.exists() {
+            if let Ok(content) = std::fs::read_to_string(&cargo_toml) {
+                let file_path = cargo_toml.strip_prefix(root_path).unwrap_or(&cargo_toml).to_string_lossy().to_string();
+                self.parse_cargo_dependencies(&content, &file_path)?;
+            }
+        }
+        
+        let pkg_json = root_path.join("package.json");
+        if pkg_json.exists() {
+            if let Ok(content) = std::fs::read_to_string(&pkg_json) {
+                let file_path = pkg_json.strip_prefix(root_path).unwrap_or(&pkg_json).to_string_lossy().to_string();
+                self.parse_package_dependencies(&content, &file_path)?;
+            }
+        }
+
+        let go_mod = root_path.join("go.mod");
+        if go_mod.exists() {
+            if let Ok(content) = std::fs::read_to_string(&go_mod) {
+                let file_path = go_mod.strip_prefix(root_path).unwrap_or(&go_mod).to_string_lossy().to_string();
+                self.parse_go_dependencies(&content, &file_path)?;
+            }
+        }
+
+        let req_txt = root_path.join("requirements.txt");
+        if req_txt.exists() {
+            if let Ok(content) = std::fs::read_to_string(&req_txt) {
+                let file_path = req_txt.strip_prefix(root_path).unwrap_or(&req_txt).to_string_lossy().to_string();
+                self.parse_req_dependencies(&content, &file_path)?;
+            }
+        }
+        
+        Ok(())
+    }
+
+    fn add_dependency_node(&mut self, dep_name: &str, file_path: &str) -> Result<()> {
+        use spy_core::{Node, NodeId, NodeKind, Language};
+        
+        let node_id = NodeId::new("dependency", file_path, "", dep_name)?;
+        
+        let node = Node {
+            node_id,
+            kind: NodeKind::Dependency,
+            name: dep_name.to_string(),
+            description: Some(format!("Dependency imported via {}", file_path)),
+            signatures: vec![],
+            language: Language::Rust,
+            file_path: file_path.to_string(),
+            start_line: 1,
+            end_line: 1,
+            content_hash: "".to_string(),
+            git_sha: None,
+            renamed_from: None,
+        };
+        
+        self.storage.upsert_node(&node)?;
+        Ok(())
+    }
+
+    fn parse_cargo_dependencies(&mut self, content: &str, file_path: &str) -> Result<()> {
+        let mut in_deps = false;
+        for line in content.lines() {
+            let line = line.trim();
+            if line.starts_with('[') {
+                in_deps = line.contains("dependencies");
+                continue;
+            }
+            if in_deps && !line.is_empty() && !line.starts_with('#') {
+                if let Some(dep_name) = line.split('=').next() {
+                    let dep_name = dep_name.trim();
+                    if !dep_name.is_empty() {
+                        self.add_dependency_node(dep_name, file_path)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn parse_package_dependencies(&mut self, content: &str, file_path: &str) -> Result<()> {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(content) {
+            if let Some(deps) = val.get("dependencies").and_then(|d| d.as_object()) {
+                for dep_name in deps.keys() {
+                    self.add_dependency_node(dep_name, file_path)?;
+                }
+            }
+            if let Some(dev_deps) = val.get("devDependencies").and_then(|d| d.as_object()) {
+                for dep_name in dev_deps.keys() {
+                    self.add_dependency_node(dep_name, file_path)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn parse_req_dependencies(&mut self, content: &str, file_path: &str) -> Result<()> {
+        for line in content.lines() {
+            let line = line.trim();
+            if !line.is_empty() && !line.starts_with('#') {
+                let dep_name = line.split(&['=', '>', '<', '~', '@'][..])
+                    .next()
+                    .unwrap_or("")
+                    .trim();
+                if !dep_name.is_empty() {
+                    self.add_dependency_node(dep_name, file_path)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn parse_go_dependencies(&mut self, content: &str, file_path: &str) -> Result<()> {
+        let mut in_require = false;
+        for line in content.lines() {
+            let line = line.trim();
+            if line.starts_with("require (") {
+                in_require = true;
+                continue;
+            }
+            if in_require && line.starts_with(')') {
+                in_require = false;
+                continue;
+            }
+            if line.starts_with("require ") {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    // Stripping any quotes around import path
+                    let dep = parts[1].trim_matches('"');
+                    self.add_dependency_node(dep, file_path)?;
+                }
+            } else if in_require && !line.is_empty() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if !parts.is_empty() {
+                    let dep = parts[0].trim_matches('"');
+                    self.add_dependency_node(dep, file_path)?;
+                }
+            }
+        }
+        Ok(())
     }
 }
 

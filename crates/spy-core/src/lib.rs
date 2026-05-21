@@ -105,6 +105,7 @@ pub enum NodeKind {
     Function,
     Class,
     Constant,
+    Dependency,
 }
 
 impl NodeKind {
@@ -113,6 +114,7 @@ impl NodeKind {
             NodeKind::Function => "function",
             NodeKind::Class => "class",
             NodeKind::Constant => "constant",
+            NodeKind::Dependency => "dependency",
         }
     }
 }
@@ -129,6 +131,9 @@ pub enum EdgeKind {
     Calls,
     Imports,
     References,
+    InheritsFrom,
+    Implements,
+    DependsOn,
 }
 
 impl EdgeKind {
@@ -137,6 +142,9 @@ impl EdgeKind {
             EdgeKind::Calls => "calls",
             EdgeKind::Imports => "imports",
             EdgeKind::References => "references",
+            EdgeKind::InheritsFrom => "inherits_from",
+            EdgeKind::Implements => "implements",
+            EdgeKind::DependsOn => "depends_on",
         }
     }
     
@@ -145,6 +153,9 @@ impl EdgeKind {
             EdgeKind::Calls => "edges_calls",
             EdgeKind::Imports => "edges_imports",
             EdgeKind::References => "edges_references",
+            EdgeKind::InheritsFrom => "edges_inherits_from",
+            EdgeKind::Implements => "edges_implements",
+            EdgeKind::DependsOn => "edges_depends_on",
         }
     }
 }
@@ -228,6 +239,10 @@ impl ProjectScope {
     
     pub fn all_nodes(&self) -> impl Iterator<Item = &Node> {
         self.nodes.values()
+    }
+
+    pub fn remove_nodes_for_file(&mut self, file_path: &str) {
+        self.nodes.retain(|_, node| node.file_path != file_path);
     }
 }
 
