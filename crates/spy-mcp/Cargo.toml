@@ -9,6 +9,7 @@ spy-core = { workspace = true }
 spy-storage = { workspace = true }
 spy-git = { workspace = true }
 spy-graph = { workspace = true }
+spy-embeddings = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

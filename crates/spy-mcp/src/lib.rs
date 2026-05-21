@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use spy_core::Config;
+use spy_embeddings::EmbeddingManager;
 use spy_storage::Storage;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -121,12 +122,13 @@ async fn handle_request(
                 "serverInfo": {
                     "name": "spy-code",
                     "version": env!("CARGO_PKG_VERSION")
-                }
+                },
+                "instructions": "Spy-Code MCP Server - GraphQL-style compiler for codebases with semantic search capabilities.\n\nThis server provides tools for exploring, querying, and understanding codebases through a graph-based representation. Use it to:\n\n1. **Navigate the codebase**: Find functions, classes, and their relationships\n2. **Understand call graphs**: Trace callers and callees to understand impact\n3. **Semantic search**: Use natural language to find relevant code via embeddings\n4. **Track changes**: See what changed since a git reference\n\n**Available Tools:**\n- `query_graph`: Run raw GraphQL queries for complex operations\n- `get_node`: Get details of a specific node by ID\n- `search`: Fuzzy search for nodes by name/description\n- `find_callers`/`find_callees`: Navigate call graphs\n- `changed_since`: Find nodes changed since a git ref\n- `stats`: Get index statistics\n- `embed`: Generate embeddings for semantic search (run once per codebase)\n- `ask`: Ask natural language questions about the codebase using semantic search\n\n**Best Practices:**\n- Start with `search` or `ask` to find relevant code\n- Use `get_node` to get detailed information\n- Use `find_callers`/`find_callees` to understand relationships\n- Run `embed` once to enable semantic search with `ask`\n- Use `changed_since` after rebasing to find what to re-read\n\n**Node IDs:** Node IDs follow the format: `dir:file:class:symbol` (e.g., `src:main.rs:main:main`)"
             }),
         ),
         "initialized" => Response::ok(req.id, json!(null)),
         "tools/list" => Response::ok(req.id, tools_list()),
-        "tools/call" => match handle_tool_call(req.params, storage, schema).await {
+        "tools/call" => match handle_tool_call(req.params, storage, schema, config).await {
             Ok(result) => Response::ok(req.id, result),
             Err(e) => Response::err(req.id, -32603, e.to_string()),
         },
@@ -224,6 +226,37 @@ fn tools_list() -> Value {
                     "type": "object",
                     "properties": {}
                 }
+            },
+            {
+                "name": "embed",
+                "description": "Generate embeddings for semantic search. This should be run once after indexing to enable natural language queries. Uses TF-IDF-based embedding generation.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "full": {
+                            "type": "boolean",
+                            "description": "Force full re-embedding of all nodes (default: false)"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "ask",
+                "description": "Ask natural language questions about the codebase using semantic search. Returns relevant code nodes ranked by similarity. Requires embeddings to be generated first (run 'embed' tool).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Natural language question or search query"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of results to return (default: 20)"
+                        }
+                    },
+                    "required": ["query"]
+                }
             }
         ]
     })
@@ -233,6 +266,7 @@ async fn handle_tool_call(
     params: Option<Value>,
     storage: &Arc<Mutex<Storage>>,
     schema: &spy_graph::SpySchema,
+    config: &Config,
 ) -> Result<Value> {
     let params = params.unwrap_or_default();
     let name = params
@@ -329,6 +363,44 @@ async fn handle_tool_call(
             Ok(
                 json!({ "content": [{ "type": "text", "text": serde_json::to_string(&json!({ "node_count": stats.node_count, "edge_count": stats.edge_count, "file_count": stats.file_count, "last_git_sha": stats.last_git_sha }))? }] }),
             )
+        }
+
+        "embed" => {
+            let _full = args.get("full").and_then(|v| v.as_bool()).unwrap_or(false);
+            let embedding_storage = Storage::open(&config.db_path)?;
+            let mut embedding_manager = EmbeddingManager::new(embedding_storage);
+            embedding_manager.initialize_schema()?;
+
+            let model_path = std::path::PathBuf::from(".spy-code/models/all-MiniLM-L6-v2");
+            embedding_manager.generate_node_embeddings(&model_path)?;
+
+            Ok(json!({ "content": [{ "type": "text", "text": "Embeddings generated successfully. You can now use the 'ask' tool for semantic search." }] }))
+        }
+
+        "ask" => {
+            let query = args
+                .get("query")
+                .and_then(|v| v.as_str())
+                .context("Missing 'query'")?;
+            let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+
+            let embedding_storage = Storage::open(&config.db_path)?;
+            let embedding_manager = EmbeddingManager::new(embedding_storage);
+            let results = embedding_manager.semantic_search(query, limit)?;
+
+            let results_json: Vec<_> = results
+                .iter()
+                .map(|(node, score)| json!({
+                    "node_id": node.node_id.as_str(),
+                    "name": &node.name,
+                    "kind": node.kind.as_str(),
+                    "file_path": &node.file_path,
+                    "start_line": node.start_line,
+                    "score": score
+                }))
+                .collect();
+
+            Ok(json!({ "content": [{ "type": "text", "text": serde_json::to_string(&results_json)? }] }))
         }
 
         other => anyhow::bail!("Unknown tool: {}", other),

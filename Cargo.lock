@@ -1645,6 +1645,7 @@ dependencies = [
  "serde",
  "serde_json",
  "spy-core",
+ "spy-embeddings",
  "spy-git",
  "spy-graph",
  "spy-storage",
