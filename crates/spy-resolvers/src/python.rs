@@ -323,7 +323,8 @@ fn walk_for_edges(
                         for child in superclasses_node.children(&mut cursor) {
                             if child.kind() == "identifier" || child.kind() == "attribute" {
                                 let base_name = node_text(&child, source);
-                                let bare_name = base_name.split('.').next_back().unwrap_or(base_name);
+                                let bare_name =
+                                    base_name.split('.').next_back().unwrap_or(base_name);
                                 let candidates = scope.find_nodes_by_name(bare_name);
                                 if candidates.len() == 1 {
                                     edges.push(Edge {

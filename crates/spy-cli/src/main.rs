@@ -185,7 +185,7 @@ fn cmd_index(full: bool, path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-async fn cmd_query(query_str: String, json: bool) -> Result<()> {
+async fn cmd_query(query_str: String, _json: bool) -> Result<()> {
     let config = load_config()?;
     let storage = Storage::open(&config.db_path)?;
     let storage = Arc::new(Mutex::new(storage));

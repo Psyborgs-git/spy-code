@@ -621,8 +621,7 @@ impl Node {
             if node.kind == spy_core::NodeKind::Function {
                 let node_name_lower = node.name.to_lowercase();
                 if node_name_lower.contains("test")
-                    && (node_name_lower.contains(&target_lower)
-                        || node.file_path.contains("test"))
+                    && (node_name_lower.contains(&target_lower) || node.file_path.contains("test"))
                 {
                     associated_tests.push(node.into());
                 }
