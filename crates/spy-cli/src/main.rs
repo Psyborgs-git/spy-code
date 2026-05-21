@@ -193,11 +193,7 @@ async fn cmd_query(query_str: String, json: bool) -> Result<()> {
     let schema = spy_graph::create_schema(storage);
     let result = schema.execute(&query_str).await;
 
-    if json {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    } else {
-        println!("{}", serde_json::to_string_pretty(&result)?);
-    }
+    println!("{}", serde_json::to_string_pretty(&result)?);
 
     Ok(())
 }

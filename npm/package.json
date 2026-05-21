@@ -1,13 +1,13 @@
 {
   "name": "spy-code",
   "version": "0.1.0",
-  "description": "GraphQL-style compiler for codebases",
+  "description": "GraphQL-style codebase intelligence CLI — index, query, and analyze any codebase",
   "main": "bin/index.js",
   "bin": {
     "spy-code": "bin/index.js"
   },
   "scripts": {
-    "install": "node install.js"
+    "postinstall": "node install.js"
   },
   "keywords": [
     "graphql",
@@ -15,10 +15,17 @@
     "codebase",
     "mcp",
     "mcp-server",
-    "cli"
+    "cli",
+    "code-intelligence",
+    "ast"
   ],
   "author": "Psyborgs-git",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Psyborgs-git/spy-code.git"
+  },
+  "homepage": "https://github.com/Psyborgs-git/spy-code#readme",
   "engines": {
     "node": ">=14.0.0"
   },
