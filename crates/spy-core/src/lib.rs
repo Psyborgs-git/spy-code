@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
 use thiserror::Error;
+use anyhow::Context;
 
 #[derive(Debug, Error)]
 pub enum SpyError {
@@ -207,6 +208,42 @@ pub struct Edge {
     pub to_id: NodeId,
     pub kind: EdgeKind,
     pub confidence: f64,
+}
+
+/// Trait for embedding model implementations
+pub trait EmbeddingModel: Send + Sync {
+    /// Generate embedding for a single text
+    fn embed(&self, text: &str) -> anyhow::Result<Vec<f32>>;
+
+    /// Generate embeddings for multiple texts (batch processing)
+    fn embed_batch(&self, texts: &[&str]) -> anyhow::Result<Vec<Vec<f32>>> {
+        texts.iter().map(|t| self.embed(t)).collect()
+    }
+
+    /// Return the dimension of the embedding vectors
+    fn dimension(&self) -> usize;
+
+    /// Return the model identifier
+    fn model_name(&self) -> &str;
+}
+
+/// Model type enum for configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModelType {
+    Local,
+    Python,
+    Remote,
+}
+
+impl ModelType {
+    pub fn as_str(&self) -> &str {
+        match self {
+            ModelType::Local => "local",
+            ModelType::Python => "python",
+            ModelType::Remote => "remote",
+        }
+    }
 }
 
 pub trait Resolver: Send + Sync {
@@ -415,6 +452,86 @@ impl Default for SearchConfig {
     fn default() -> Self {
         Self {
             fts_tokenizer: "unicode61".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EmbeddingConfig {
+    #[serde(default = "default_embedding_version")]
+    pub version: u32,
+    #[serde(default = "default_embedding_model")]
+    pub default_model: String,
+    #[serde(default)]
+    pub models: std::collections::HashMap<String, ModelConfig>,
+}
+
+const fn default_embedding_version() -> u32 {
+    1
+}
+
+fn default_embedding_model() -> String {
+    "simple-tfidf".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelConfig {
+    #[serde(rename = "type")]
+    pub model_type: ModelType,
+    #[serde(default)]
+    pub implementation: Option<String>,
+    #[serde(default)]
+    pub model_path: Option<String>,
+    #[serde(default)]
+    pub download_url: Option<String>,
+    pub dimension: usize,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub api_key_env: Option<String>,
+}
+
+impl Default for EmbeddingConfig {
+    fn default() -> Self {
+        let mut models = std::collections::HashMap::new();
+        models.insert(
+            "simple-tfidf".to_string(),
+            ModelConfig {
+                model_type: ModelType::Local,
+                implementation: Some("tfidf".to_string()),
+                model_path: None,
+                download_url: None,
+                dimension: 100,
+                provider: None,
+                api_key_env: None,
+            },
+        );
+
+        Self {
+            version: 1,
+            default_model: "simple-tfidf".to_string(),
+            models,
+        }
+    }
+}
+
+impl EmbeddingConfig {
+    pub fn load_from_file(path: &std::path::Path) -> anyhow::Result<Self> {
+        let config_str = std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read embedding config from {}", path.display()))?;
+        let config: EmbeddingConfig = serde_json::from_str(&config_str)
+            .with_context(|| format!("Failed to parse embedding config from {}", path.display()))?;
+        Ok(config)
+    }
+
+    pub fn load_or_default() -> Self {
+        let path = std::path::Path::new(".spy-code/embedding.config.json");
+        if path.exists() {
+            Self::load_from_file(path).unwrap_or_default()
+        } else {
+            Self::default()
         }
     }
 }

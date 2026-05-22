@@ -445,8 +445,11 @@ impl QueryRoot {
             .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?;
 
         let embedding_manager = EmbeddingManager::new(embedding_storage);
+        let mut registry = spy_embeddings::ModelRegistry::from_config();
+        let model = registry.get_default_model()
+            .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?;
         let results: Vec<(spy_core::Node, f64)> = embedding_manager
-            .semantic_search(&query, limit)
+            .semantic_search(model.as_ref(), &query, limit)
             .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?;
 
         Ok(results

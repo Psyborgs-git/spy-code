@@ -371,8 +371,9 @@ async fn handle_tool_call(
             let mut embedding_manager = EmbeddingManager::new(embedding_storage);
             embedding_manager.initialize_schema()?;
 
-            let model_path = std::path::PathBuf::from(".spy-code/models/all-MiniLM-L6-v2");
-            embedding_manager.generate_node_embeddings(&model_path)?;
+            let mut registry = spy_embeddings::ModelRegistry::from_config();
+            let model = registry.get_default_model()?;
+            embedding_manager.generate_node_embeddings(model.as_ref())?;
 
             Ok(json!({ "content": [{ "type": "text", "text": "Embeddings generated successfully. You can now use the 'ask' tool for semantic search." }] }))
         }
@@ -386,7 +387,9 @@ async fn handle_tool_call(
 
             let embedding_storage = Storage::open(&config.db_path)?;
             let embedding_manager = EmbeddingManager::new(embedding_storage);
-            let results = embedding_manager.semantic_search(query, limit)?;
+            let mut registry = spy_embeddings::ModelRegistry::from_config();
+            let model = registry.get_default_model()?;
+            let results = embedding_manager.semantic_search(model.as_ref(), query, limit)?;
 
             let results_json: Vec<_> = results
                 .iter()

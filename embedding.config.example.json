@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "default_model": "simple-tfidf",
+  "models": {
+    "simple-tfidf": {
+      "type": "local",
+      "implementation": "tfidf",
+      "dimension": 100
+    },
+    "all-MiniLM-L6-v2": {
+      "type": "local",
+      "implementation": "candle",
+      "model_path": ".spy-code/models/all-MiniLM-L6-v2",
+      "download_url": "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2",
+      "dimension": 384
+    },
+    "openai-text-embedding-3-small": {
+      "type": "remote",
+      "provider": "openai",
+      "model": "text-embedding-3-small",
+      "api_key_env": "OPENAI_API_KEY",
+      "dimension": 1536
+    }
+  }
+}

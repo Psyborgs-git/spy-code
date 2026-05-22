@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use spy_core::{Config, EdgeKind, NodeKind};
-use spy_embeddings::EmbeddingManager;
+use spy_embeddings::{EmbeddingManager, ModelRegistry};
 use spy_indexer::Indexer;
 use spy_storage::Storage;
 use std::path::PathBuf;
@@ -141,9 +141,14 @@ enum Commands {
         /// Force full re-embedding of all nodes
         #[arg(long)]
         full: bool,
-        /// Path to embedding model directory
+        /// Model name to use for embeddings
         #[arg(long)]
-        model: Option<PathBuf>,
+        model: Option<String>,
+    },
+    /// Manage embedding models
+    Model {
+        #[command(subcommand)]
+        command: ModelCommands,
     },
     /// Ask natural language questions about the codebase
     Ask {
@@ -161,6 +166,17 @@ enum Commands {
         /// Open browser automatically
         #[arg(long)]
         open: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ModelCommands {
+    /// List available embedding models
+    List,
+    /// Download a model
+    Download {
+        /// Model name to download
+        name: String,
     },
 }
 
@@ -192,6 +208,7 @@ async fn main() -> Result<()> {
         Commands::Dependencies => cmd_dependencies().await?,
         Commands::ActiveContext => cmd_active_context().await?,
         Commands::Embed { full, model } => cmd_embed(full, model)?,
+        Commands::Model { command } => cmd_model(command)?,
         Commands::Ask { query, json } => cmd_ask(query, json).await?,
         Commands::Graph { path, open } => cmd_graph(path, open).await?,
     }
@@ -807,26 +824,51 @@ async fn cmd_active_context() -> Result<()> {
     Ok(())
 }
 
-fn cmd_embed(full: bool, model: Option<PathBuf>) -> Result<()> {
+fn cmd_embed(full: bool, model: Option<String>) -> Result<()> {
     let config = load_config()?;
     let storage = Storage::open(&config.db_path)?;
 
     let mut embedding_manager = EmbeddingManager::new(storage);
     embedding_manager.initialize_schema()?;
 
-    // Use default model path if not provided
-    let model_path = model.unwrap_or_else(|| PathBuf::from(".spy-code/models/all-MiniLM-L6-v2"));
+    let mut registry = ModelRegistry::from_config();
+    let model_name = model.unwrap_or_else(|| registry.default_model_name().to_string());
 
-    println!("Generating embeddings using model at: {}", model_path.display());
+    println!("Generating embeddings using model: {}", model_name);
 
     if full {
         println!("Full re-embedding requested (ignoring existing embeddings)");
     }
 
-    embedding_manager.generate_node_embeddings(&model_path)?;
+    let model = registry.get_model(&model_name)?;
+    embedding_manager.generate_node_embeddings(model.as_ref())?;
 
     println!("Embedding generation completed successfully");
 
+    Ok(())
+}
+
+fn cmd_model(command: ModelCommands) -> Result<()> {
+    match command {
+        ModelCommands::List => {
+            let registry = ModelRegistry::from_config();
+            println!("Available embedding models:");
+            for model_name in registry.list_models() {
+                if let Some(model_config) = registry.get_model_config(model_name) {
+                    println!("  - {} (type: {}, dimension: {})",
+                        model_name,
+                        model_config.model_type.as_str(),
+                        model_config.dimension
+                    );
+                }
+            }
+            println!("\nDefault model: {}", registry.default_model_name());
+        }
+        ModelCommands::Download { name } => {
+            println!("Downloading model: {}", name);
+            println!("Model download not yet implemented. Please download manually.");
+        }
+    }
     Ok(())
 }
 
@@ -835,7 +877,9 @@ async fn cmd_ask(query: String, json: bool) -> Result<()> {
     let storage = Storage::open(&config.db_path)?;
 
     let embedding_manager = EmbeddingManager::new(storage);
-    let results = embedding_manager.semantic_search(&query, 20)?;
+    let mut registry = ModelRegistry::from_config();
+    let model = registry.get_default_model()?;
+    let results = embedding_manager.semantic_search(model.as_ref(), &query, 20)?;
 
     if json {
         let json_results: Vec<_> = results
