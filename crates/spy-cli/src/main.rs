@@ -167,6 +167,18 @@ enum Commands {
         #[arg(long)]
         open: bool,
     },
+    /// Install spy-code skills for AI coding environments (Cursor, Windsurf, Claude Desktop, etc.)
+    InstallSkills {
+        /// Show what would be done without making changes
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip codebase indexing
+        #[arg(long)]
+        skip_index: bool,
+        /// Force re-creation of spy.config.json
+        #[arg(long)]
+        force_config: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -211,6 +223,7 @@ async fn main() -> Result<()> {
         Commands::Model { command } => cmd_model(command)?,
         Commands::Ask { query, json } => cmd_ask(query, json).await?,
         Commands::Graph { path, open } => cmd_graph(path, open).await?,
+        Commands::InstallSkills { dry_run, skip_index, force_config } => cmd_install_skills(dry_run, skip_index, force_config)?,
     }
 
     Ok(())
@@ -970,4 +983,48 @@ async fn cmd_graph(path: PathBuf, open: bool) -> Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+fn cmd_install_skills(dry_run: bool, skip_index: bool, force_config: bool) -> Result<()> {
+    // Get the path to the install script
+    let script_path = std::path::PathBuf::from("scripts/install-spy-code-skill.sh");
+
+    if !script_path.exists() {
+        anyhow::bail!(
+            "Install script not found at: {}.
+Please run this command from the spy-code repository root.",
+            script_path.display()
+        );
+    }
+
+    // Build the command arguments
+    let mut args = vec![script_path.to_string_lossy().to_string()];
+
+    if dry_run {
+        args.push("--dry-run".to_string());
+    }
+    if skip_index {
+        args.push("--skip-index".to_string());
+    }
+    if force_config {
+        args.push("--force-config".to_string());
+    }
+
+    println!("Running spy-code skill installer...");
+    println!("Command: bash {}", args.join(" "));
+    println!();
+
+    // Execute the script
+    let status = std::process::Command::new("bash")
+        .args(&args)
+        .status()
+        .context("Failed to execute install script")?;
+
+    if status.success() {
+        println!();
+        println!("Skill installation completed successfully!");
+        Ok(())
+    } else {
+        anyhow::bail!("Install script failed with exit code: {:?}", status.code());
+    }
 }
