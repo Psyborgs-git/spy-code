@@ -7,7 +7,9 @@
     "spy-code": "bin/index.js"
   },
   "scripts": {
-    "postinstall": "node install.js"
+    "postinstall": "node install.js",
+    "setup-mcp": "node scripts/setup-mcp.js",
+    "detect-env": "node ../scripts/detect-environment.js"
   },
   "keywords": [
     "graphql",
@@ -17,7 +19,12 @@
     "mcp-server",
     "cli",
     "code-intelligence",
-    "ast"
+    "ast",
+    "cursor",
+    "windsurf",
+    "claude",
+    "copilot",
+    "ai-coding"
   ],
   "author": "Psyborgs-git",
   "license": "MIT",
@@ -31,6 +38,7 @@
   },
   "files": [
     "bin/index.js",
-    "install.js"
+    "install.js",
+    "scripts/setup-mcp.js"
   ]
 }

@@ -1,0 +1,126 @@
+{
+  "name": "vscode-spy-code",
+  "displayName": "Spy-Code",
+  "description": "Codebase intelligence for VS Code - index, query, and analyze your code with graph-based navigation",
+  "version": "0.1.0",
+  "publisher": "Psyborgs",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "code",
+    "intelligence",
+    "graph",
+    "navigation",
+    "search",
+    "call-graph",
+    "codebase",
+    "analysis"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "spy-code.search",
+        "title": "Spy-Code: Search Codebase",
+        "category": "Spy-Code"
+      },
+      {
+        "command": "spy-code.findCallers",
+        "title": "Spy-Code: Find Callers",
+        "category": "Spy-Code"
+      },
+      {
+        "command": "spy-code.findCallees",
+        "title": "Spy-Code: Find Callees",
+        "category": "Spy-Code"
+      },
+      {
+        "command": "spy-code.showNode",
+        "title": "Spy-Code: Show Node Details",
+        "category": "Spy-Code"
+      },
+      {
+        "command": "spy-code.index",
+        "title": "Spy-Code: Index Codebase",
+        "category": "Spy-Code"
+      },
+      {
+        "command": "spy-code.openGraph",
+        "title": "Spy-Code: Open Graph Visualization",
+        "category": "Spy-Code"
+      },
+      {
+        "command": "spy-code.stats",
+        "title": "Spy-Code: Show Statistics",
+        "category": "Spy-Code"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "spy-code",
+          "title": "Spy-Code"
+        }
+      ]
+    },
+    "views": {
+      "spy-code": [
+        {
+          "type": "webview",
+          "id": "spy-code.graphView",
+          "name": "Graph View"
+        },
+        {
+          "id": "spy-code.searchResults",
+          "name": "Search Results"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Spy-Code",
+      "properties": {
+        "spy-code.configPath": {
+          "type": "string",
+          "default": "spy.config.json",
+          "description": "Path to spy-code configuration file"
+        },
+        "spy-code.autoIndex": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically re-index after file changes"
+        },
+        "spy-code.graph.maxNodes": {
+          "type": "number",
+          "default": 100,
+          "description": "Maximum number of nodes to display in graph view"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.75.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@spy-code/integration-core": "^0.1.0"
+  }
+}

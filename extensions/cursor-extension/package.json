@@ -1,0 +1,145 @@
+{
+  "name": "spy-code-cursor",
+  "displayName": "Spy-Code for Cursor",
+  "description": "GraphQL-style code analysis and navigation for Cursor IDE",
+  "version": "0.1.0",
+  "publisher": "psyborgs",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "spy-code.showPanel",
+        "title": "Show Spy-Code Panel",
+        "icon": "$(search)"
+      },
+      {
+        "command": "spy-code.search",
+        "title": "Search Codebase"
+      },
+      {
+        "command": "spy-code.semanticSearch",
+        "title": "Semantic Search"
+      },
+      {
+        "command": "spy-code.goToDefinition",
+        "title": "Go to Definition (Spy-Code)"
+      },
+      {
+        "command": "spy-code.findReferences",
+        "title": "Find References (Spy-Code)"
+      },
+      {
+        "command": "spy-code.showCallGraph",
+        "title": "Show Call Graph"
+      },
+      {
+        "command": "spy-code.reindex",
+        "title": "Reindex Codebase"
+      },
+      {
+        "command": "spy-code.showStats",
+        "title": "Show Index Statistics"
+      },
+      {
+        "command": "spy-code.init",
+        "title": "Initialize Spy-Code"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "spy-code",
+          "title": "Spy-Code",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "spy-code": [
+        {
+          "type": "webview",
+          "id": "spy-code.sidebar",
+          "name": "Search",
+          "contextualTitle": "Spy-Code Search"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "spy-code.search",
+        "key": "ctrl+shift+s",
+        "mac": "cmd+shift+s"
+      },
+      {
+        "command": "spy-code.semanticSearch",
+        "key": "ctrl+shift+alt+s",
+        "mac": "cmd+shift+alt+s"
+      }
+    ],
+    "configuration": {
+      "title": "Spy-Code",
+      "properties": {
+        "spy-code.path": {
+          "type": "string",
+          "default": "spy-code",
+          "description": "Path to spy-code CLI binary"
+        },
+        "spy-code.dbPath": {
+          "type": "string",
+          "default": ".spy-code/graph.db",
+          "description": "Path to spy-code database"
+        },
+        "spy-code.enableMCP": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable MCP server integration"
+        },
+        "spy-code.enableHooks": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable coding agent hooks"
+        },
+        "spy-code.cacheEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable result caching"
+        },
+        "spy-code.cacheTTL": {
+          "type": "number",
+          "default": 300000,
+          "description": "Cache time-to-live in milliseconds"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./dist/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@spy-code/integration-core": "file:../../spy-integration-core",
+    "@spy-code/vscode-adapter": "file:../../ide-adapters/vscode-adapter"
+  }
+}

@@ -9,7 +9,7 @@ description = "GraphQL-style codebase intelligence CLI — index, query, and ana
 readme = "README.md"
 requires-python = ">=3.7"
 license = { text = "MIT" }
-keywords = ["graphql", "cli", "codebase", "mcp", "code-intelligence", "ast"]
+keywords = ["graphql", "cli", "codebase", "mcp", "code-intelligence", "ast", "cursor", "windsurf", "claude", "copilot", "ai-coding"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -26,6 +26,7 @@ Repository = "https://github.com/Psyborgs-git/spy-code.git"
 
 [project.scripts]
 spy-code = "spy_code:main"
+spy-code-setup-mcp = "spy_code.setup_mcp:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

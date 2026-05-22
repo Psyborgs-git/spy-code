@@ -1,0 +1,33 @@
+{
+  "name": "@spy-code/integration-core",
+  "version": "0.1.0",
+  "description": "Shared core library for spy-code IDE integrations",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "test": "jest",
+    "lint": "eslint src --ext .ts"
+  },
+  "keywords": [
+    "spy-code",
+    "code-analysis",
+    "ide-integration"
+  ],
+  "author": "Psyborgs",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/lru-cache": "^7.10.9",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.57.1",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "eventemitter3": "^5.0.0"
+  }
+}

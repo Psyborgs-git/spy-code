@@ -1,0 +1,43 @@
+<idea-plugin>
+  <id>com.psyborg.spycode</id>
+  <name>Spy-Code</name>
+  <vendor email="support@spy-code.dev" url="https://github.com/Psyborgs-git/spy-code">Psyborgs</vendor>
+
+  <description><![CDATA[
+    Codebase intelligence for JetBrains IDEs - index, query, and analyze your code with graph-based navigation.
+    
+    Features:
+    - Search for functions, classes, and constants
+    - Find callers and callees
+    - View node details
+    - Graph visualization
+    - Codebase statistics
+  ]]></description>
+
+  <depends>com.intellij.modules.platform</depends>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <toolWindow id="Spy-Code" factoryClass="com.psyborg.spycode.toolwindow.SpyCodeToolWindowFactory" />
+    <projectService serviceImplementation="com.psyborg.spycode.services.SpyCodeService" />
+  </extensions>
+
+  <actions>
+    <action id="SpyCode.Search" class="com.psyborg.spycode.actions.SearchAction" text="Search Codebase"
+            description="Search the codebase using Spy-Code">
+      <add-to-group group-id="EditMenu" anchor="last"/>
+      <keyboard-shortcut first-keystroke="ctrl shift S" keymap="$default"/>
+    </action>
+    <action id="SpyCode.FindCallers" class="com.psyborg.spycode.actions.FindCallersAction" text="Find Callers"
+            description="Find callers of the selected symbol">
+      <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="FindUsages"/>
+    </action>
+    <action id="SpyCode.FindCallees" class="com.psyborg.spycode.actions.FindCalleesAction" text="Find Callees"
+            description="Find callees of the selected symbol">
+      <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="FindUsages"/>
+    </action>
+    <action id="SpyCode.Index" class="com.psyborg.spycode.actions.IndexAction" text="Index Codebase"
+            description="Index the codebase with Spy-Code">
+      <add-to-group group-id="ToolsMenu" anchor="last"/>
+    </action>
+  </actions>
+</idea-plugin>

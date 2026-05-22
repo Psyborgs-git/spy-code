@@ -13,6 +13,13 @@ const GRAPH_UI_HTML: &str = include_str!("../../../crates/spy-graph-ui/index.htm
 #[command(name = "spy-code")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "GraphQL-style compiler for codebases", long_about = None)]
+#[command(after_help = "
+AI CODING ENVIRONMENT SETUP:
+  For automatic setup with Cursor, Windsurf, Claude Desktop, or GitHub Copilot:
+    ./scripts/install-spy-code-skill.sh
+
+  For manual MCP configuration, see docs/INTEGRATIONS.md
+")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,

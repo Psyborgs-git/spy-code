@@ -1,0 +1,28 @@
+{
+  "name": "spy-code-claude-code",
+  "displayName": "Spy-Code for Claude Code",
+  "description": "Spy-Code integration for Claude Code with MCP support",
+  "version": "0.1.0",
+  "publisher": "psyborgs",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "test": "jest"
+  },
+  "keywords": [
+    "spy-code",
+    "claude-code",
+    "mcp"
+  ],
+  "author": "Psyborgs",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@spy-code/integration-core": "file:../../spy-integration-core",
+    "@spy-code/claude-code-adapter": "file:../../ide-adapters/claude-code-adapter"
+  }
+}

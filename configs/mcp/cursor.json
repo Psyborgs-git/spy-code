@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "spy-code": {
+      "command": "spy-code",
+      "args": ["serve", "--mcp"],
+      "env": {
+        "SPY_CODE_CONFIG_PATH": "${workspaceFolder}/spy.config.json"
+      }
+    }
+  }
+}

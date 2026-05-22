@@ -240,6 +240,25 @@ spy-code serve --http
 spy-code serve --mcp
 ```
 
+### Quick setup for AI coding environments
+
+For automatic setup with Cursor, Windsurf, Claude Desktop, or GitHub Copilot:
+
+```bash
+# Run the auto-installer (from spy-code repository)
+./scripts/install-spy-code-skill.sh
+```
+
+The auto-installer will:
+- Detect your AI coding environment
+- Install spy-code if needed
+- Initialize configuration
+- Index your codebase
+- Configure MCP integration
+- Verify the setup
+
+For manual MCP configuration, see [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
+
 ---
 
 ## CLI commands
@@ -474,6 +493,10 @@ spy-code/
 
 ## Documentation
 
+- [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) - AI coding environment integration guide
+- [`docs/MCP_SETUP.md`](docs/MCP_SETUP.md) - MCP server setup and configuration
+- [`docs/AGENT_USAGE.md`](docs/AGENT_USAGE.md) - How agents should use spy-code
+- [`docs/SKILL_REFERENCE.md`](docs/SKILL_REFERENCE.md) - Complete skill catalog
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) - system layout, crates, data flow
 - [`docs/NODE_ID_SPEC.md`](docs/NODE_ID_SPEC.md) - node ID format and collision rules
 - [`docs/SCHEMA.md`](docs/SCHEMA.md) - SQLite tables and GraphQL schema

@@ -1,0 +1,29 @@
+{
+  "name": "spy-code-codex",
+  "displayName": "Spy-Code for OpenAI Codex",
+  "description": "Spy-Code integration for OpenAI Codex with agent templates",
+  "version": "0.1.0",
+  "publisher": "psyborgs",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "test": "jest"
+  },
+  "keywords": [
+    "spy-code",
+    "codex",
+    "openai",
+    "agent"
+  ],
+  "author": "Psyborgs",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@spy-code/integration-core": "file:../../spy-integration-core",
+    "@spy-code/codex-adapter": "file:../../ide-adapters/codex-adapter"
+  }
+}

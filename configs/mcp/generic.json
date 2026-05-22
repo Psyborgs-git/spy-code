@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "spy-code": {
+      "command": "spy-code",
+      "args": ["serve", "--mcp"],
+      "env": {
+        "SPY_CODE_CONFIG_PATH": "${workspaceFolder}/spy.config.json"
+      },
+      "description": "Spy-Code MCP server for codebase intelligence - index, query, and analyze code via GraphQL-style graph",
+      "disabled": false
+    }
+  }
+}
