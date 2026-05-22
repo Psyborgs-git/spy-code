@@ -1,8 +1,8 @@
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
 use thiserror::Error;
-use anyhow::Context;
 
 #[derive(Debug, Error)]
 pub enum SpyError {

@@ -2083,7 +2083,7 @@ checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 
 [[package]]
 name = "spy-cli"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -2106,7 +2106,7 @@ dependencies = [
 
 [[package]]
 name = "spy-core"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "serde",
@@ -2117,7 +2117,7 @@ dependencies = [
 
 [[package]]
 name = "spy-embeddings"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "dirs",
@@ -2131,14 +2131,14 @@ dependencies = [
 
 [[package]]
 name = "spy-git"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
 ]
 
 [[package]]
 name = "spy-graph"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -2159,7 +2159,7 @@ dependencies = [
 
 [[package]]
 name = "spy-indexer"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "blake3",
@@ -2176,7 +2176,7 @@ dependencies = [
 
 [[package]]
 name = "spy-mcp"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "serde",
@@ -2191,7 +2191,7 @@ dependencies = [
 
 [[package]]
 name = "spy-parser"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "spy-core",
@@ -2205,7 +2205,7 @@ dependencies = [
 
 [[package]]
 name = "spy-resolvers"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "blake3",
@@ -2221,7 +2221,7 @@ dependencies = [
 
 [[package]]
 name = "spy-storage"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "rusqlite",

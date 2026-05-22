@@ -446,7 +446,8 @@ impl QueryRoot {
 
         let embedding_manager = EmbeddingManager::new(embedding_storage);
         let mut registry = spy_embeddings::ModelRegistry::from_config();
-        let model = registry.get_default_model()
+        let model = registry
+            .get_default_model()
             .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?;
         let results: Vec<(spy_core::Node, f64)> = embedding_manager
             .semantic_search(model.as_ref(), &query, limit)
@@ -462,7 +463,10 @@ impl QueryRoot {
     }
 
     #[graphql(name = "embeddingsStatus")]
-    async fn embeddings_status(&self, ctx: &Context<'_>) -> async_graphql::Result<EmbeddingStatusGQL> {
+    async fn embeddings_status(
+        &self,
+        ctx: &Context<'_>,
+    ) -> async_graphql::Result<EmbeddingStatusGQL> {
         let _state = ctx.data::<Arc<GraphState>>()?;
 
         // Create a new storage connection for embedding manager
@@ -493,7 +497,8 @@ impl QueryRoot {
         let storage = state.storage.lock().unwrap();
 
         let filter = filter.unwrap_or_default();
-        let mut nodes = storage.get_all_nodes()
+        let mut nodes = storage
+            .get_all_nodes()
             .map_err(|e| async_graphql::Error::new(e.to_string()))?;
 
         // Apply filters
@@ -502,7 +507,8 @@ impl QueryRoot {
         }
 
         if let Some(ref node_kinds) = filter.node_kinds {
-            let kind_set: std::collections::HashSet<NodeKindGQL> = node_kinds.iter().cloned().collect();
+            let kind_set: std::collections::HashSet<NodeKindGQL> =
+                node_kinds.iter().cloned().collect();
             nodes.retain(|n| {
                 let gql_kind = match n.kind {
                     spy_core::NodeKind::Function => NodeKindGQL::Function,
@@ -515,7 +521,8 @@ impl QueryRoot {
         }
 
         if let Some(ref languages) = filter.languages {
-            let lang_set: std::collections::HashSet<LanguageGQL> = languages.iter().cloned().collect();
+            let lang_set: std::collections::HashSet<LanguageGQL> =
+                languages.iter().cloned().collect();
             nodes.retain(|n| lang_set.contains(&LanguageGQL::from(n.language)));
         }
 

@@ -777,7 +777,12 @@ impl Storage {
         Ok(())
     }
 
-    pub fn query_raw<F, T>(&self, sql: &str, params: &[&dyn rusqlite::ToSql], f: F) -> Result<Vec<T>>
+    pub fn query_raw<F, T>(
+        &self,
+        sql: &str,
+        params: &[&dyn rusqlite::ToSql],
+        f: F,
+    ) -> Result<Vec<T>>
     where
         F: Fn(&rusqlite::Row) -> rusqlite::Result<T>,
     {
@@ -790,7 +795,12 @@ impl Storage {
         Ok(results)
     }
 
-    pub fn query_row_raw<F, T>(&self, sql: &str, params: &[&dyn rusqlite::ToSql], f: F) -> Result<Option<T>>
+    pub fn query_row_raw<F, T>(
+        &self,
+        sql: &str,
+        params: &[&dyn rusqlite::ToSql],
+        f: F,
+    ) -> Result<Option<T>>
     where
         F: Fn(&rusqlite::Row) -> rusqlite::Result<T>,
     {

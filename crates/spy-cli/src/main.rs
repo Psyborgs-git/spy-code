@@ -223,7 +223,11 @@ async fn main() -> Result<()> {
         Commands::Model { command } => cmd_model(command)?,
         Commands::Ask { query, json } => cmd_ask(query, json).await?,
         Commands::Graph { path, open } => cmd_graph(path, open).await?,
-        Commands::InstallSkills { dry_run, skip_index, force_config } => cmd_install_skills(dry_run, skip_index, force_config)?,
+        Commands::InstallSkills {
+            dry_run,
+            skip_index,
+            force_config,
+        } => cmd_install_skills(dry_run, skip_index, force_config)?,
     }
 
     Ok(())
@@ -868,7 +872,8 @@ fn cmd_model(command: ModelCommands) -> Result<()> {
             println!("Available embedding models:");
             for model_name in registry.list_models() {
                 if let Some(model_config) = registry.get_model_config(model_name) {
-                    println!("  - {} (type: {}, dimension: {})",
+                    println!(
+                        "  - {} (type: {}, dimension: {})",
                         model_name,
                         model_config.model_type.as_str(),
                         model_config.dimension
@@ -897,21 +902,25 @@ async fn cmd_ask(query: String, json: bool) -> Result<()> {
     if json {
         let json_results: Vec<_> = results
             .iter()
-            .map(|(node, score)| serde_json::json!({
-                "node_id": node.node_id.as_str(),
-                "name": node.name,
-                "kind": node.kind.as_str(),
-                "file_path": node.file_path,
-                "start_line": node.start_line,
-                "score": score
-            }))
+            .map(|(node, score)| {
+                serde_json::json!({
+                    "node_id": node.node_id.as_str(),
+                    "name": node.name,
+                    "kind": node.kind.as_str(),
+                    "file_path": node.file_path,
+                    "start_line": node.start_line,
+                    "score": score
+                })
+            })
             .collect();
         println!("{}", serde_json::to_string_pretty(&json_results)?);
     } else {
         println!("Results for query: {}", query);
         for (node, score) in results {
-            println!("  {} ({}) - {} (score: {:.4}) [{}:{}]",
-                node.node_id, node.kind, node.name, score, node.file_path, node.start_line);
+            println!(
+                "  {} ({}) - {} (score: {:.4}) [{}:{}]",
+                node.node_id, node.kind, node.name, score, node.file_path, node.start_line
+            );
             if let Some(desc) = &node.description {
                 println!("    Description: {}", desc);
             }

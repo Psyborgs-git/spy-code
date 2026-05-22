@@ -375,7 +375,9 @@ async fn handle_tool_call(
             let model = registry.get_default_model()?;
             embedding_manager.generate_node_embeddings(model.as_ref())?;
 
-            Ok(json!({ "content": [{ "type": "text", "text": "Embeddings generated successfully. You can now use the 'ask' tool for semantic search." }] }))
+            Ok(
+                json!({ "content": [{ "type": "text", "text": "Embeddings generated successfully. You can now use the 'ask' tool for semantic search." }] }),
+            )
         }
 
         "ask" => {
@@ -393,17 +395,21 @@ async fn handle_tool_call(
 
             let results_json: Vec<_> = results
                 .iter()
-                .map(|(node, score)| json!({
-                    "node_id": node.node_id.as_str(),
-                    "name": &node.name,
-                    "kind": node.kind.as_str(),
-                    "file_path": &node.file_path,
-                    "start_line": node.start_line,
-                    "score": score
-                }))
+                .map(|(node, score)| {
+                    json!({
+                        "node_id": node.node_id.as_str(),
+                        "name": &node.name,
+                        "kind": node.kind.as_str(),
+                        "file_path": &node.file_path,
+                        "start_line": node.start_line,
+                        "score": score
+                    })
+                })
                 .collect();
 
-            Ok(json!({ "content": [{ "type": "text", "text": serde_json::to_string(&results_json)? }] }))
+            Ok(
+                json!({ "content": [{ "type": "text", "text": serde_json::to_string(&results_json)? }] }),
+            )
         }
 
         other => anyhow::bail!("Unknown tool: {}", other),

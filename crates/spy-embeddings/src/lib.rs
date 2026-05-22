@@ -1,5 +1,5 @@
 use anyhow::Result;
-use spy_core::{EmbeddingModel, EmbeddingConfig, ModelType, Node};
+use spy_core::{EmbeddingConfig, EmbeddingModel, ModelType, Node};
 use spy_storage::Storage;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -93,20 +93,24 @@ impl ModelRegistry {
             return Ok(Arc::clone(model));
         }
 
-        let model_config = self.config.models.get(model_name)
-            .ok_or_else(|| anyhow::anyhow!("Model '{}' not found in configuration", model_name))?;
+        let model_config =
+            self.config.models.get(model_name).ok_or_else(|| {
+                anyhow::anyhow!("Model '{}' not found in configuration", model_name)
+            })?;
 
         let model: Arc<dyn EmbeddingModel> = match model_config.model_type {
-            ModelType::Local => {
-                match model_config.implementation.as_deref() {
-                    Some("tfidf") => Arc::new(SimpleTfidfModel::new(model_config.dimension)),
-                    Some("candle") => {
-                        return Err(anyhow::anyhow!("Candle models not yet implemented. Use 'tfidf' for now."));
-                    }
-                    Some(other) => return Err(anyhow::anyhow!("Unknown local implementation: {}", other)),
-                    None => Arc::new(SimpleTfidfModel::new(model_config.dimension)),
+            ModelType::Local => match model_config.implementation.as_deref() {
+                Some("tfidf") => Arc::new(SimpleTfidfModel::new(model_config.dimension)),
+                Some("candle") => {
+                    return Err(anyhow::anyhow!(
+                        "Candle models not yet implemented. Use 'tfidf' for now."
+                    ));
                 }
-            }
+                Some(other) => {
+                    return Err(anyhow::anyhow!("Unknown local implementation: {}", other))
+                }
+                None => Arc::new(SimpleTfidfModel::new(model_config.dimension)),
+            },
             ModelType::Python => {
                 return Err(anyhow::anyhow!("Python models not yet implemented. Use 'local' type with 'tfidf' implementation."));
             }
@@ -115,7 +119,8 @@ impl ModelRegistry {
             }
         };
 
-        self.models.insert(model_name.to_string(), Arc::clone(&model));
+        self.models
+            .insert(model_name.to_string(), Arc::clone(&model));
         Ok(model)
     }
 
@@ -169,7 +174,11 @@ impl EmbeddingManager {
         )?;
 
         for (i, node) in nodes.iter().enumerate() {
-            let text = format!("{} {}", node.name, node.description.as_ref().unwrap_or(&String::new()));
+            let text = format!(
+                "{} {}",
+                node.name,
+                node.description.as_ref().unwrap_or(&String::new())
+            );
             let embedding_vec = model.embed(&text)?;
             let embedding = self.vec_to_bytes(&embedding_vec);
 
@@ -207,7 +216,12 @@ impl EmbeddingManager {
         bytes
     }
 
-    pub fn semantic_search(&self, model: &dyn EmbeddingModel, query: &str, limit: usize) -> Result<Vec<(Node, f64)>> {
+    pub fn semantic_search(
+        &self,
+        model: &dyn EmbeddingModel,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<(Node, f64)>> {
         let query_embedding = model.embed(query)?;
         let query_vec = query_embedding;
 
