@@ -1,6 +1,6 @@
 {
   "name": "spy-code",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "GraphQL-style codebase intelligence CLI \u2014 index, query, and analyze any codebase",
   "main": "bin/index.js",
   "bin": {

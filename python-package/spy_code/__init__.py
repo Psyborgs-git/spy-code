@@ -4,7 +4,7 @@ import subprocess
 import urllib.request
 import platform
 
-VERSION = "0.2.2"
+VERSION = "0.2.3"
 REPO = "Psyborgs-git/spy-code"
 
 def get_binary_info():
