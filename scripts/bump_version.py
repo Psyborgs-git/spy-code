@@ -8,17 +8,23 @@ def bump_version(version):
     # Strip leading 'v' if present
     if version.startswith('v'):
         version = version[1:]
-    
+
+    # Validate semantic version format
+    if not re.match(r'^[0-9]+\.[0-9]+\.[0-9]+$', version):
+        print(f"Skipping version bump: '{version}' is not a valid semantic version")
+        print("Version bumping only runs for release tags (e.g., v0.2.2)")
+        return
+
     print(f"Bumping version to: {version}")
-    
+
     root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
+
     # 1. Update Cargo.toml
     cargo_path = os.path.join(root_dir, "Cargo.toml")
     if os.path.exists(cargo_path):
         with open(cargo_path, "r", encoding="utf-8") as f:
             content = f.read()
-        
+
         # We want to replace the version line under [workspace.package]
         new_content = re.sub(
             r'(?<=^version = ")[^"]+',
