@@ -39,6 +39,7 @@
   "files": [
     "bin/index.js",
     "install.js",
-    "scripts/setup-mcp.js"
+    "scripts/setup-mcp.js",
+    "scripts/install-spy-code-skill.sh"
   ]
 }

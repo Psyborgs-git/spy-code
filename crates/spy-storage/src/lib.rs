@@ -16,6 +16,9 @@ impl Storage {
 
         let conn = Connection::open(path).context("Failed to open database")?;
 
+        // Disable foreign key enforcement since we handle integrity at application level
+        conn.execute("PRAGMA foreign_keys = OFF;", [])?;
+
         let mut storage = Storage { conn };
         storage.migrate()?;
         Ok(storage)
@@ -23,6 +26,10 @@ impl Storage {
 
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
+
+        // Disable foreign key enforcement since we handle integrity at application level
+        conn.execute("PRAGMA foreign_keys = OFF;", [])?;
+
         let mut storage = Storage { conn };
         storage.migrate()?;
         Ok(storage)
@@ -54,8 +61,7 @@ impl Storage {
                 from_id     TEXT NOT NULL,
                 to_id       TEXT NOT NULL,
                 confidence  REAL NOT NULL DEFAULT 1.0,
-                PRIMARY KEY (from_id, to_id),
-                FOREIGN KEY (from_id) REFERENCES nodes(node_id) ON DELETE CASCADE
+                PRIMARY KEY (from_id, to_id)
             );
 
             CREATE INDEX IF NOT EXISTS idx_calls_to ON edges_calls(to_id);
@@ -228,7 +234,32 @@ impl Storage {
         Ok(())
     }
 
+    fn node_exists(&self, node_id: &str) -> Result<bool> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM nodes WHERE node_id = ?1",
+            params![node_id],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
     pub fn upsert_edge(&mut self, edge: &Edge) -> Result<()> {
+        // Check if both nodes exist before inserting the edge
+        if !self.node_exists(edge.from_id.as_str())? {
+            eprintln!(
+                "Warning: Skipping edge from {} to {} - source node does not exist",
+                edge.from_id, edge.to_id
+            );
+            return Ok(());
+        }
+        if !self.node_exists(edge.to_id.as_str())? {
+            eprintln!(
+                "Warning: Skipping edge from {} to {} - target node does not exist",
+                edge.from_id, edge.to_id
+            );
+            return Ok(());
+        }
+
         let table = edge.kind.table_name();
         let query = format!(
             "INSERT INTO {} (from_id, to_id, confidence) VALUES (?1, ?2, ?3)
@@ -304,15 +335,25 @@ impl Storage {
     }
 
     pub fn delete_nodes_for_file(&mut self, file_path: &str) -> Result<()> {
-        self.conn.execute("DELETE FROM edges_calls WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-        self.conn.execute("DELETE FROM edges_imports WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-        self.conn.execute("DELETE FROM edges_references WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-        self.conn.execute("DELETE FROM edges_inherits_from WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-        self.conn.execute("DELETE FROM edges_depends_on WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
-        self.conn.execute("DELETE FROM edges_implements WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])?;
+        let tx = self.conn.unchecked_transaction()?;
 
-        self.conn
-            .execute("DELETE FROM nodes WHERE file_path = ?1", params![file_path])?;
+        tx.execute("DELETE FROM edges_calls WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])
+            .context("Failed to delete edges_calls for file")?;
+        tx.execute("DELETE FROM edges_imports WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])
+            .context("Failed to delete edges_imports for file")?;
+        tx.execute("DELETE FROM edges_references WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])
+            .context("Failed to delete edges_references for file")?;
+        tx.execute("DELETE FROM edges_inherits_from WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])
+            .context("Failed to delete edges_inherits_from for file")?;
+        tx.execute("DELETE FROM edges_depends_on WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])
+            .context("Failed to delete edges_depends_on for file")?;
+        tx.execute("DELETE FROM edges_implements WHERE from_id IN (SELECT node_id FROM nodes WHERE file_path = ?1) OR to_id IN (SELECT node_id FROM nodes WHERE file_path = ?1)", params![file_path])
+            .context("Failed to delete edges_implements for file")?;
+
+        tx.execute("DELETE FROM nodes WHERE file_path = ?1", params![file_path])
+            .context("Failed to delete nodes for file")?;
+
+        tx.commit()?;
         Ok(())
     }
 

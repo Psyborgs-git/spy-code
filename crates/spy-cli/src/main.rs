@@ -995,16 +995,40 @@ async fn cmd_graph(path: PathBuf, open: bool) -> Result<()> {
 }
 
 fn cmd_install_skills(dry_run: bool, skip_index: bool, force_config: bool) -> Result<()> {
-    // Get the path to the install script
-    let script_path = std::path::PathBuf::from("scripts/install-spy-code-skill.sh");
+    // Get the path to the install script - try multiple locations
+    let exe_path = std::env::current_exe().context("Failed to get executable path")?;
 
-    if !script_path.exists() {
-        anyhow::bail!(
-            "Install script not found at: {}.
-Please run this command from the spy-code repository root.",
-            script_path.display()
-        );
-    }
+    // Try to find the script in various possible locations
+    let possible_paths = vec![
+        // npm installation: script is in npm/scripts/ relative to binary
+        exe_path.parent()
+            .and_then(|p| p.parent())
+            .map(|p| p.join("scripts/install-spy-code-skill.sh")),
+        // npm global installation: script might be in node_modules/spy-code/scripts/
+        exe_path.parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent())
+            .map(|p| p.join("spy-code/scripts/install-spy-code-skill.sh")),
+        // Development build: script is in scripts/ relative to repo root
+        exe_path.parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent())
+            .map(|p| p.join("scripts/install-spy-code-skill.sh")),
+        // Current directory (for running from repo root)
+        Some(std::path::PathBuf::from("scripts/install-spy-code-skill.sh")),
+    ];
+
+    let script_path = possible_paths
+        .into_iter()
+        .filter_map(|p| p)
+        .find(|p| p.exists())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Install script not found. Tried multiple locations. \
+                 If running from npm, ensure the package was installed correctly. \
+                 If running from source, ensure you're in the repository root."
+            )
+        })?;
 
     // Build the command arguments
     let mut args = vec![script_path.to_string_lossy().to_string()];

@@ -4,11 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Spy-Code Graph Visualization</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/reactflow@11.10.1/dist/umd/index.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/reactflow@11.10.1/dist/style.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -21,9 +17,13 @@
             color: #e0e0e0;
             overflow: hidden;
         }
-        #root {
+        #graph-container {
             width: 100vw;
             height: 100vh;
+            position: relative;
+        }
+        canvas {
+            display: block;
         }
         .controls {
             position: fixed;
@@ -31,30 +31,32 @@
             left: 20px;
             z-index: 1000;
             background: rgba(15, 15, 26, 0.98);
-            padding: 24px;
+            padding: 20px;
             border-radius: 12px;
             border: 1px solid #2a2a4a;
-            max-width: 320px;
+            max-width: 300px;
+            max-height: 90vh;
+            overflow-y: auto;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             backdrop-filter: blur(10px);
         }
         .controls h3 {
-            margin: 0 0 20px 0;
+            margin: 0 0 16px 0;
             color: #7eb8ff;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 600;
             letter-spacing: -0.5px;
         }
         .control-group {
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
         .control-group:last-child {
             margin-bottom: 0;
         }
         .control-group label {
             display: block;
-            margin-bottom: 8px;
-            font-size: 12px;
+            margin-bottom: 6px;
+            font-size: 11px;
             color: #888;
             font-weight: 500;
             text-transform: uppercase;
@@ -63,12 +65,12 @@
         .control-group input,
         .control-group select {
             width: 100%;
-            padding: 12px 14px;
+            padding: 10px 12px;
             background: #1a1a2e;
             border: 1px solid #3a3a5a;
-            border-radius: 8px;
+            border-radius: 6px;
             color: #e0e0e0;
-            font-size: 14px;
+            font-size: 13px;
             transition: all 0.2s ease;
         }
         .control-group input:focus,
@@ -79,14 +81,14 @@
         }
         .control-group button {
             width: 100%;
-            padding: 14px;
+            padding: 12px;
             background: linear-gradient(135deg, #7eb8ff 0%, #5a9eff 100%);
             border: none;
-            border-radius: 8px;
+            border-radius: 6px;
             color: white;
             cursor: pointer;
             font-weight: 600;
-            font-size: 14px;
+            font-size: 13px;
             transition: all 0.2s ease;
             box-shadow: 0 4px 12px rgba(126, 184, 255, 0.3);
         }
@@ -102,11 +104,11 @@
             cursor: not-allowed;
         }
         .status {
-            margin-top: 16px;
-            padding: 12px 14px;
+            margin-top: 12px;
+            padding: 10px 12px;
             background: #1a1a2e;
-            border-radius: 8px;
-            font-size: 13px;
+            border-radius: 6px;
+            font-size: 12px;
             border-left: 3px solid #7eb8ff;
         }
         .status.error {
@@ -125,30 +127,30 @@
             right: 20px;
             z-index: 1000;
             background: rgba(15, 15, 26, 0.98);
-            padding: 24px;
+            padding: 20px;
             border-radius: 12px;
             border: 1px solid #2a2a4a;
-            max-width: 420px;
+            max-width: 380px;
             max-height: 85vh;
             overflow-y: auto;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             backdrop-filter: blur(10px);
         }
         .node-details h3 {
-            margin: 0 0 20px 0;
+            margin: 0 0 16px 0;
             color: #7eb8ff;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 600;
             letter-spacing: -0.5px;
         }
         .node-details p {
-            margin: 0 0 16px 0;
-            font-size: 14px;
+            margin: 0 0 12px 0;
+            font-size: 13px;
             line-height: 1.5;
         }
         .node-details .label {
             color: #888;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 500;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -161,89 +163,19 @@
         }
         .node-details button {
             width: 100%;
-            padding: 12px;
+            padding: 10px;
             background: #2a2a4a;
             border: 1px solid #3a3a5a;
-            border-radius: 8px;
+            border-radius: 6px;
             color: #e0e0e0;
             cursor: pointer;
             font-weight: 500;
-            font-size: 14px;
+            font-size: 13px;
             transition: all 0.2s ease;
         }
         .node-details button:hover {
             background: #3a3a5a;
             border-color: #4a4a6a;
-        }
-        .react-flow__node {
-            background: #1a1a2e;
-            border: 2px solid #3a3a5a;
-            border-radius: 12px;
-            padding: 16px 20px;
-            color: #e0e0e0;
-            font-size: 14px;
-            font-weight: 500;
-            min-width: 180px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            transition: all 0.2s ease;
-        }
-        .react-flow__node:hover {
-            transform: scale(1.05);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
-        }
-        .react-flow__node.function {
-            border-color: #7eb8ff;
-            background: linear-gradient(135deg, #1a1a2e 0%, #1a2a3e 100%);
-        }
-        .react-flow__node.class {
-            border-color: #ff6b6b;
-            background: linear-gradient(135deg, #1a1a2e 0%, #2e1a1a 100%);
-        }
-        .react-flow__node.constant {
-            border-color: #6bff6b;
-            background: linear-gradient(135deg, #1a1a2e 0%, #1a2e1a 100%);
-        }
-        .react-flow__edge {
-            stroke: #4a4a6a;
-            stroke-width: 2;
-            transition: stroke 0.2s ease;
-        }
-        .react-flow__edge:hover {
-            stroke: #7eb8ff;
-            stroke-width: 3;
-        }
-        .react-flow__edge.selected {
-            stroke: #7eb8ff;
-            stroke-width: 3;
-        }
-        .react-flow__edge-path {
-            stroke-linecap: round;
-        }
-        .react-flow__attribution {
-            background: #0f0f1a;
-            color: #4a4a6a;
-            font-size: 11px;
-        }
-        .react-flow__background {
-            background: #0f0f1a;
-        }
-        .react-flow__controls {
-            background: rgba(15, 15, 26, 0.98);
-            border: 1px solid #2a2a4a;
-            border-radius: 8px;
-        }
-        .react-flow__controls-button {
-            background: #1a1a2e;
-            border-bottom: 1px solid #2a2a4a;
-            fill: #7eb8ff;
-        }
-        .react-flow__controls-button:hover {
-            background: #2a2a4a;
-        }
-        .react-flow__minimap {
-            background: rgba(15, 15, 26, 0.98);
-            border: 1px solid #2a2a4a;
-            border-radius: 8px;
         }
         .loading-overlay {
             position: fixed;
@@ -269,541 +201,953 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-        .expand-button {
-            position: absolute;
-            right: -12px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 24px;
-            height: 24px;
-            background: #7eb8ff;
-            border: 2px solid #1a1a2e;
-            border-radius: 50%;
+        .tooltip {
+            position: fixed;
+            background: rgba(15, 15, 26, 0.98);
+            border: 1px solid #2a2a4a;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 3000;
+            max-width: 300px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(10px);
+        }
+        .tooltip .label {
+            color: #888;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+        .tooltip .value {
+            color: #e0e0e0;
+        }
+        .zoom-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .zoom-controls button {
+            width: 40px;
+            height: 40px;
+            background: rgba(15, 15, 26, 0.98);
+            border: 1px solid #2a2a4a;
+            border-radius: 8px;
+            color: #7eb8ff;
             cursor: pointer;
+            font-size: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 12px;
-            font-weight: bold;
-            color: #1a1a2e;
             transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
         }
-        .expand-button:hover {
-            background: #5a9eff;
-            transform: translateY(-50%) scale(1.1);
+        .zoom-controls button:hover {
+            background: #2a2a4a;
+            border-color: #7eb8ff;
+        }
+        .legend {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: rgba(15, 15, 26, 0.98);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #2a2a4a;
+            font-size: 11px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(10px);
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .legend-item:last-child {
+            margin-bottom: 0;
+        }
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .help-text {
+            margin-top: 12px;
+            font-size: 11px;
+            color: #666;
+            line-height: 1.4;
         }
     </style>
 </head>
 <body>
-    <div id="root"></div>
-    <script type="text/babel">
-        const { useState, useEffect, useCallback, useMemo, useRef } = React;
-        const { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState, addEdge, MarkerType, getBezierPath } = window.ReactFlow;
+    <div id="graph-container">
+        <canvas id="graph-canvas"></canvas>
+    </div>
 
-        // Custom edge component for mind-map style curved connections
-        function MindMapEdge({ id, source, target, sourceX, sourceY, targetX, targetY, style = {}, data }) {
-            const [edgePath] = getBezierPath({
-                sourceX, sourceY,
-                targetX, targetY,
-                curvature: 0.5
-            });
+    <div class="controls">
+        <h3>🔍 Spy-Code Graph</h3>
+        <div class="control-group">
+            <label>Layout</label>
+            <select id="layout-select">
+                <option value="force">Force-Directed</option>
+                <option value="hierarchical">Hierarchical</option>
+                <option value="circular">Circular</option>
+                <option value="grid">Grid</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>File Path Filter</label>
+            <input type="text" id="file-filter" placeholder="e.g., src/lib.rs">
+        </div>
+        <div class="control-group">
+            <label>Node Kind</label>
+            <select id="node-kind-select">
+                <option value="function">Functions</option>
+                <option value="class">Classes</option>
+                <option value="constant">Constants</option>
+                <option value="all">All</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Edge Kind</label>
+            <select id="edge-kind-select">
+                <option value="calls">Calls</option>
+                <option value="imports">Imports</option>
+                <option value="references">References</option>
+                <option value="all">All</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Initial Nodes</label>
+            <select id="max-nodes-select">
+                <option value="50">50 nodes</option>
+                <option value="100">100 nodes</option>
+                <option value="200">200 nodes</option>
+                <option value="500">500 nodes</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Search</label>
+            <input type="text" id="search-input" placeholder="Search nodes...">
+        </div>
+        <div class="control-group">
+            <button id="reload-btn">Reload Graph</button>
+        </div>
+        <div class="control-group">
+            <button id="export-btn">Export PNG</button>
+        </div>
+        <div id="status" class="status"></div>
+        <div class="help-text">
+            💡 Scroll to zoom<br/>
+            💡 Drag to pan<br/>
+            💡 Click node to select<br/>
+            💡 Double-click to expand<br/>
+            💡 Drag node to reposition
+        </div>
+    </div>
 
-            return (
-                <g>
-                    <path
-                        id={id}
-                        style={{
-                            ...style,
-                            stroke: '#4a4a6a',
-                            strokeWidth: 2,
-                            fill: 'none',
-                            transition: 'stroke 0.2s ease, stroke-width 0.2s ease'
-                        }}
-                        className="react-flow__edge-path"
-                        d={edgePath}
-                        markerEnd="url(#arrowhead)"
-                    />
-                    <defs>
-                        <marker
-                            id="arrowhead"
-                            markerWidth="10"
-                            markerHeight="7"
-                            refX="9"
-                            refY="3.5"
-                            orient="auto"
-                        >
-                            <polygon
-                                points="0 0, 10 3.5, 0 7"
-                                fill="#4a4a6a"
-                            />
-                        </marker>
-                    </defs>
-                </g>
-            );
-        }
+    <div id="node-details" class="node-details" style="display: none;">
+        <h3>📦 Node Details</h3>
+        <div id="node-details-content"></div>
+        <button id="close-details">Close</button>
+    </div>
 
-        const edgeTypes = {
-            mindmap: MindMapEdge,
+    <div id="tooltip" class="tooltip" style="display: none;"></div>
+
+    <div class="zoom-controls">
+        <button id="zoom-in">+</button>
+        <button id="zoom-out">−</button>
+        <button id="zoom-fit">⌖</button>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item">
+            <div class="legend-color" style="background: #7eb8ff;"></div>
+            <span>Function</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ff6b6b;"></div>
+            <span>Class</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #6bff6b;"></div>
+            <span>Constant</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ffd93d;"></div>
+            <span>Dependency</span>
+        </div>
+    </div>
+
+    <div id="loading" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <script>
+        // Graph Visualization with D3.js + Canvas
+        const canvas = document.getElementById('graph-canvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('graph-container');
+
+        // State
+        let nodes = [];
+        let edges = [];
+        let simulation = null;
+        let transform = { x: 0, y: 0, k: 1 };
+        let selectedNode = null;
+        let hoveredNode = null;
+        let loadedNodeIds = new Set();
+        let expandedNodes = new Set();
+        let isLoading = false;
+
+        // Configuration
+        const config = {
+            nodeRadius: 8,
+            nodeStrokeWidth: 2,
+            edgeWidth: 1.5,
+            fontSize: 11,
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            colors: {
+                function: '#7eb8ff',
+                class: '#ff6b6b',
+                constant: '#6bff6b',
+                dependency: '#ffd93d',
+                default: '#666',
+                edge: '#4a4a6a',
+                edgeCalls: '#7eb8ff',
+                edgeImports: '#6bff6b',
+                edgeReferences: '#ff6b6b',
+                background: '#0f0f1a'
+            }
         };
 
-        function GraphApp() {
-            const [nodes, setNodes, onNodesChange] = useNodesState([]);
-            const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-            const [selectedNode, setSelectedNode] = useState(null);
-            const [status, setStatus] = useState({ type: '', message: '' });
-            const [filters, setFilters] = useState({
-                filePath: '',
-                nodeKinds: 'function',
-                edgeKinds: 'calls',
-                maxNodes: 50
-            });
-            const [isLoading, setIsLoading] = useState(false);
-            const [loadedNodeIds, setLoadedNodeIds] = useState(new Set());
-            const [expandedNodes, setExpandedNodes] = useState(new Set());
-            const reactFlowWrapper = useRef(null);
-            const [reactFlowInstance, setReactFlowInstance] = useState(null);
+        // Resize canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            render();
+        }
 
-            const onConnect = useCallback((params) => {
-                setEdges((eds) => addEdge({
-                    ...params,
-                    type: 'mindmap',
-                    markerEnd: { type: MarkerType.ArrowClosed }
-                }, eds));
-            }, []);
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
 
-            // Lazy load initial nodes only
-            const loadInitialNodes = async () => {
-                setIsLoading(true);
-                setStatus({ type: '', message: 'Loading initial nodes...' });
+        // Transform utilities
+        function screenToWorld(x, y) {
+            return {
+                x: (x - transform.x) / transform.k,
+                y: (y - transform.y) / transform.k
+            };
+        }
 
-                try {
-                    const query = `
-                        query {
-                            graphData(filter: {
-                                ${filters.filePath ? `filePath: "${filters.filePath}"` : ''}
-                                ${filters.nodeKinds !== 'all' ? `nodeKinds: [${filters.nodeKinds.toUpperCase()}]` : ''}
-                                ${filters.edgeKinds !== 'all' ? `edgeKinds: [${filters.edgeKinds.toUpperCase()}]` : ''}
-                            }) {
-                                nodes {
-                                    id
-                                    kind
-                                    name
-                                    filePath
-                                    startLine
-                                    description
-                                }
-                                edges {
-                                    fromId
-                                    toId
-                                    kind
-                                    confidence
-                                }
-                            }
-                        }
-                    `;
+        function worldToScreen(x, y) {
+            return {
+                x: x * transform.k + transform.x,
+                y: y * transform.k + transform.y
+            };
+        }
 
-                    const response = await fetch('/', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ query })
-                    });
+        // Quadtree for spatial queries
+        let quadtree = null;
 
-                    const result = await response.json();
+        function buildQuadtree() {
+            if (nodes.length === 0) return;
+            quadtree = d3.quadtree()
+                .x(d => d.x)
+                .y(d => d.y)
+                .addAll(nodes);
+        }
 
-                    if (result.errors) {
-                        throw new Error(result.errors[0].message);
+        // Find node at position
+        function findNodeAt(x, y) {
+            if (!quadtree) return null;
+            const worldPos = screenToWorld(x, y);
+            const radius = config.nodeRadius / transform.k + 5;
+
+            let found = null;
+            quadtree.visit((node, x0, y0, x1, y1) => {
+                if (!found) {
+                    const d = Math.hypot(node.data.x - worldPos.x, node.data.y - worldPos.y);
+                    if (d < radius) {
+                        found = node.data;
                     }
-
-                    const graphData = result.data.graphData;
-
-                    // Limit initial load for better performance
-                    const limitedNodes = graphData.nodes.slice(0, filters.maxNodes);
-                    const limitedNodeIds = new Set(limitedNodes.map(n => n.id));
-
-                    // Only include edges between loaded nodes
-                    const limitedEdges = graphData.edges.filter(
-                        edge => limitedNodeIds.has(edge.fromId) && limitedNodeIds.has(edge.toId)
-                    );
-
-                    // Calculate hierarchical layout
-                    const nodeMap = new Map();
-                    limitedNodes.forEach(node => {
-                        nodeMap.set(node.id, node);
-                    });
-
-                    // Build adjacency list for layout
-                    const adjacency = new Map();
-                    limitedEdges.forEach(edge => {
-                        if (!adjacency.has(edge.fromId)) {
-                            adjacency.set(edge.fromId, []);
-                        }
-                        adjacency.get(edge.fromId).push(edge.toId);
-                    });
-
-                    // Find root nodes (nodes with no incoming edges)
-                    const incomingCount = new Map();
-                    limitedEdges.forEach(edge => {
-                        incomingCount.set(edge.toId, (incomingCount.get(edge.toId) || 0) + 1);
-                    });
-
-                    const rootNodes = limitedNodes.filter(node => !incomingCount.has(node.id));
-
-                    // Layout nodes in tree structure
-                    const flowNodes = [];
-                    const nodePositions = new Map();
-                    let currentY = 100;
-                    const levelHeight = 150;
-                    const nodeWidth = 220;
-                    const nodeSpacing = 40;
-
-                    const layoutLevel = (nodeIds, level, startX) => {
-                        let currentX = startX;
-                        nodeIds.forEach((nodeId, index) => {
-                            const node = nodeMap.get(nodeId);
-                            if (node) {
-                                const x = currentX;
-                                const y = currentY + (level * levelHeight);
-                                nodePositions.set(nodeId, { x, y });
-
-                                flowNodes.push({
-                                    id: node.id,
-                                    type: 'default',
-                                    data: {
-                                        label: node.name,
-                                        ...node
-                                    },
-                                    className: node.kind.toLowerCase(),
-                                    position: { x, y }
-                                });
-
-                                currentX += nodeWidth + nodeSpacing;
-
-                                // Layout children
-                                if (adjacency.has(nodeId)) {
-                                    layoutLevel(adjacency.get(nodeId), level + 1, startX);
-                                }
-                            }
-                        });
-                    };
-
-                    if (rootNodes.length > 0) {
-                        layoutLevel(rootNodes.map(n => n.id), 0, 100);
-                    } else {
-                        // Fallback: layout all nodes in a grid
-                        limitedNodes.forEach((node, index) => {
-                            const col = index % 5;
-                            const row = Math.floor(index / 5);
-                            flowNodes.push({
-                                id: node.id,
-                                type: 'default',
-                                data: {
-                                    label: node.name,
-                                    ...node
-                                },
-                                className: node.kind.toLowerCase(),
-                                position: {
-                                    x: 100 + col * (nodeWidth + nodeSpacing),
-                                    y: 100 + row * 120
-                                }
-                            });
-                        });
-                    }
-
-                    const flowEdges = limitedEdges.map(edge => ({
-                        id: `${edge.fromId}-${edge.toId}`,
-                        source: edge.fromId,
-                        target: edge.toId,
-                        type: 'mindmap',
-                        animated: false,
-                        style: { stroke: '#4a4a6a', strokeWidth: 2 }
-                    }));
-
-                    setNodes(flowNodes);
-                    setEdges(flowEdges);
-                    setLoadedNodeIds(limitedNodeIds);
-                    setStatus({
-                        type: 'success',
-                        message: `Loaded ${flowNodes.length} nodes (showing ${limitedNodes.length} of ${graphData.nodes.length} total)`
-                    });
-                } catch (error) {
-                    setStatus({ type: 'error', message: `Error: ${error.message}` });
-                } finally {
-                    setIsLoading(false);
                 }
+                return !found && x0 > worldPos.x + radius || x1 < worldPos.x - radius ||
+                       y0 > worldPos.y + radius || y1 < worldPos.y - radius;
+            });
+            return found;
+        }
+
+        // Render function
+        function render() {
+            ctx.fillStyle = config.colors.background;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(transform.x, transform.y);
+            ctx.scale(transform.k, transform.k);
+
+            // Draw edges
+            edges.forEach(edge => {
+                const source = nodes.find(n => n.id === edge.fromId);
+                const target = nodes.find(n => n.id === edge.toId);
+                if (!source || !target) return;
+
+                ctx.beginPath();
+                ctx.moveTo(source.x, source.y);
+
+                // Curved bezier for mind-map style
+                const midX = (source.x + target.x) / 2;
+                const midY = (source.y + target.y) / 2;
+                const dx = target.x - source.x;
+                const dy = target.y - source.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const offset = Math.min(dist * 0.2, 50);
+
+                ctx.quadraticCurveTo(
+                    midX - dy * 0.1,
+                    midY + dx * 0.1,
+                    target.x,
+                    target.y
+                );
+
+                // Color by edge type
+                let strokeColor = config.colors.edge;
+                if (edge.kind === 'CALLS') strokeColor = config.colors.edgeCalls;
+                else if (edge.kind === 'IMPORTS') strokeColor = config.colors.edgeImports;
+                else if (edge.kind === 'REFERENCES') strokeColor = config.colors.edgeReferences;
+
+                ctx.strokeStyle = strokeColor;
+                ctx.lineWidth = config.edgeWidth / transform.k;
+                ctx.stroke();
+
+                // Arrow
+                const angle = Math.atan2(target.y - source.y, target.x - source.x);
+                const arrowSize = 6 / transform.k;
+                const arrowX = target.x - Math.cos(angle) * (config.nodeRadius + arrowSize);
+                const arrowY = target.y - Math.sin(angle) * (config.nodeRadius + arrowSize);
+
+                ctx.beginPath();
+                ctx.moveTo(arrowX, arrowY);
+                ctx.lineTo(
+                    arrowX - arrowSize * Math.cos(angle - Math.PI / 6),
+                    arrowY - arrowSize * Math.sin(angle - Math.PI / 6)
+                );
+                ctx.lineTo(
+                    arrowX - arrowSize * Math.cos(angle + Math.PI / 6),
+                    arrowY - arrowSize * Math.sin(angle + Math.PI / 6)
+                );
+                ctx.closePath();
+                ctx.fillStyle = strokeColor;
+                ctx.fill();
+            });
+
+            // Draw nodes
+            nodes.forEach(node => {
+                const isSelected = selectedNode && selectedNode.id === node.id;
+                const isHovered = hoveredNode && hoveredNode.id === node.id;
+                const isExpanded = expandedNodes.has(node.id);
+
+                // Node color by kind
+                let fillColor = config.colors.default;
+                if (node.kind === 'FUNCTION') fillColor = config.colors.function;
+                else if (node.kind === 'CLASS') fillColor = config.colors.class;
+                else if (node.kind === 'CONSTANT') fillColor = config.colors.constant;
+                else if (node.kind === 'DEPENDENCY') fillColor = config.colors.dependency;
+
+                // Draw node
+                ctx.beginPath();
+                const radius = config.nodeRadius * (isSelected ? 1.3 : isHovered ? 1.2 : 1);
+                ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
+                ctx.fillStyle = fillColor;
+                ctx.fill();
+
+                // Stroke
+                ctx.strokeStyle = isSelected ? '#fff' : isExpanded ? '#ffd93d' : '#3a3a5a';
+                ctx.lineWidth = config.nodeStrokeWidth / transform.k;
+                ctx.stroke();
+
+                // Label (only when zoomed in enough)
+                if (transform.k > 0.5) {
+                    ctx.fillStyle = '#e0e0e0';
+                    ctx.font = `${config.fontSize / transform.k}px ${config.fontFamily}`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'top';
+                    const labelY = node.y + radius + 4 / transform.k;
+                    ctx.fillText(node.name, node.x, labelY);
+                }
+            });
+
+            ctx.restore();
+        }
+
+        // Animation loop
+        function animate() {
+            if (simulation) {
+                simulation.tick();
+            }
+            render();
+            requestAnimationFrame(animate);
+        }
+
+        // Initialize force simulation
+        function initSimulation() {
+            if (simulation) {
+                simulation.stop();
+            }
+
+            simulation = d3.forceSimulation(nodes)
+                .force('link', d3.forceLink(edges)
+                    .id(d => d.id)
+                    .distance(100)
+                    .strength(0.5))
+                .force('charge', d3.forceManyBody().strength(-300))
+                .force('center', d3.forceCenter(canvas.width / 2, canvas.height / 2))
+                .force('collide', d3.forceCollide().radius(config.nodeRadius * 2))
+                .on('tick', () => {
+                    buildQuadtree();
+                });
+        }
+
+        // Alternative layouts
+        function applyHierarchicalLayout() {
+            if (simulation) simulation.stop();
+
+            const nodeMap = new Map(nodes.map(n => [n.id, n]));
+            const adjacency = new Map();
+            const incomingCount = new Map();
+
+            edges.forEach(edge => {
+                if (!adjacency.has(edge.fromId)) {
+                    adjacency.set(edge.fromId, []);
+                }
+                adjacency.get(edge.fromId).push(edge.toId);
+                incomingCount.set(edge.toId, (incomingCount.get(edge.toId) || 0) + 1);
+            });
+
+            const roots = nodes.filter(n => !incomingCount.has(n.id));
+            if (roots.length === 0) return applyGridLayout();
+
+            const positions = new Map();
+            let currentY = 100;
+            const levelHeight = 120;
+            const nodeWidth = 150;
+            const nodeSpacing = 30;
+
+            const layoutLevel = (nodeIds, level, startX) => {
+                let currentX = startX;
+                nodeIds.forEach(nodeId => {
+                    const node = nodeMap.get(nodeId);
+                    if (node) {
+                        positions.set(nodeId, { x: currentX, y: currentY + level * levelHeight });
+                        currentX += nodeWidth + nodeSpacing;
+
+                        if (adjacency.has(nodeId)) {
+                            layoutLevel(adjacency.get(nodeId), level + 1, startX);
+                        }
+                    }
+                });
             };
 
-            // Load neighbors of a node when expanded
-            const loadNodeNeighbors = async (nodeId) => {
-                try {
-                    const query = `
-                        query {
-                            node(id: "${nodeId}") {
+            layoutLevel(roots.map(n => n.id), 0, 100);
+
+            nodes.forEach(node => {
+                const pos = positions.get(node.id);
+                if (pos) {
+                    node.x = pos.x;
+                    node.y = pos.y;
+                }
+            });
+
+            buildQuadtree();
+            render();
+        }
+
+        function applyCircularLayout() {
+            if (simulation) simulation.stop();
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(canvas.width, canvas.height) * 0.35;
+
+            nodes.forEach((node, i) => {
+                const angle = (i / nodes.length) * 2 * Math.PI;
+                node.x = centerX + radius * Math.cos(angle);
+                node.y = centerY + radius * Math.sin(angle);
+            });
+
+            buildQuadtree();
+            render();
+        }
+
+        function applyGridLayout() {
+            if (simulation) simulation.stop();
+
+            const cols = Math.ceil(Math.sqrt(nodes.length));
+            const spacing = 150;
+            const startX = (canvas.width - cols * spacing) / 2;
+            const startY = (canvas.height - Math.ceil(nodes.length / cols) * spacing) / 2;
+
+            nodes.forEach((node, i) => {
+                const col = i % cols;
+                const row = Math.floor(i / cols);
+                node.x = startX + col * spacing;
+                node.y = startY + row * spacing;
+            });
+
+            buildQuadtree();
+            render();
+        }
+
+        // Load data from GraphQL
+        async function loadGraphData() {
+            const filePath = document.getElementById('file-filter').value;
+            const nodeKind = document.getElementById('node-kind-select').value;
+            const edgeKind = document.getElementById('edge-kind-select').value;
+            const maxNodes = parseInt(document.getElementById('max-nodes-select').value);
+
+            showLoading(true);
+            setStatus('Loading graph data...', '');
+
+            try {
+                const query = `
+                    query {
+                        graphData(filter: {
+                            ${filePath ? `filePath: "${filePath}"` : ''}
+                            ${nodeKind !== 'all' ? `nodeKinds: [${nodeKind.toUpperCase()}]` : ''}
+                            ${edgeKind !== 'all' ? `edgeKinds: [${edgeKind.toUpperCase()}]` : ''}
+                        }) {
+                            nodes {
                                 id
                                 kind
                                 name
                                 filePath
                                 startLine
                                 description
-                                callers {
-                                    id
-                                    kind
-                                    name
-                                    filePath
-                                    startLine
-                                }
-                                callees {
-                                    id
-                                    kind
-                                    name
-                                    filePath
-                                    startLine
-                                }
+                            }
+                            edges {
+                                fromId
+                                toId
+                                kind
+                                confidence
                             }
                         }
-                    `;
-
-                    const response = await fetch('/', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ query })
-                    });
-
-                    const result = await response.json();
-
-                    if (result.errors) {
-                        throw new Error(result.errors[0].message);
                     }
+                `;
 
-                    const nodeData = result.data.node;
-                    const newNodes = [];
-                    const newEdges = [];
-                    const existingNodeIds = new Set(nodes.map(n => n.id));
+                const response = await fetch('/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
 
-                    // Get current node position
-                    const currentNode = nodes.find(n => n.id === nodeId);
-                    const currentPos = currentNode ? currentNode.position : { x: 400, y: 300 };
+                const result = await response.json();
 
-                    // Add callers
-                    const callers = nodeData.callers || [];
-                    callers.forEach((caller, index) => {
-                        if (!existingNodeIds.has(caller.id)) {
-                            const angle = (index / callers.length) * Math.PI * 2;
-                            const radius = 250;
-                            newNodes.push({
-                                id: caller.id,
-                                type: 'default',
-                                data: {
-                                    label: caller.name,
-                                    ...caller
-                                },
-                                className: caller.kind.toLowerCase(),
-                                position: {
-                                    x: currentPos.x + Math.cos(angle) * radius,
-                                    y: currentPos.y + Math.sin(angle) * radius
-                                }
-                            });
-                        }
-                        newEdges.push({
-                            id: `${caller.id}-${nodeId}`,
-                            source: caller.id,
-                            target: nodeId,
-                            type: 'mindmap',
-                            style: { stroke: '#4a4a6a', strokeWidth: 2 }
-                        });
-                    });
-
-                    // Add callees
-                    const callees = nodeData.callees || [];
-                    callees.forEach((callee, index) => {
-                        if (!existingNodeIds.has(callee.id)) {
-                            const angle = (index / callees.length) * Math.PI * 2 + Math.PI;
-                            const radius = 250;
-                            newNodes.push({
-                                id: callee.id,
-                                type: 'default',
-                                data: {
-                                    label: callee.name,
-                                    ...callee
-                                },
-                                className: callee.kind.toLowerCase(),
-                                position: {
-                                    x: currentPos.x + Math.cos(angle) * radius,
-                                    y: currentPos.y + Math.sin(angle) * radius
-                                }
-                            });
-                        }
-                        newEdges.push({
-                            id: `${nodeId}-${callee.id}`,
-                            source: nodeId,
-                            target: callee.id,
-                            type: 'mindmap',
-                            style: { stroke: '#4a4a6a', strokeWidth: 2 }
-                        });
-                    });
-
-                    setNodes(prev => [...prev, ...newNodes]);
-                    setEdges(prev => [...prev, ...newEdges]);
-                    setLoadedNodeIds(prev => new Set([...prev, ...newNodes.map(n => n.id)]));
-
-                    // Fit view to show new nodes
-                    if (reactFlowInstance) {
-                        setTimeout(() => {
-                            reactFlowInstance.fitView({ padding: 0.2, duration: 800 });
-                        }, 100);
-                    }
-                } catch (error) {
-                    console.error('Error loading neighbors:', error);
+                if (result.errors) {
+                    throw new Error(result.errors[0].message);
                 }
-            };
 
-            const onNodeClick = useCallback((event, node) => {
-                setSelectedNode(node.data);
+                const graphData = result.data.graphData;
 
-                // Lazy load neighbors if not already loaded
-                if (!expandedNodes.has(node.id)) {
-                    setExpandedNodes(prev => new Set([...prev, node.id]));
-                    loadNodeNeighbors(node.id);
+                // Limit initial nodes
+                const limitedNodes = graphData.nodes.slice(0, maxNodes);
+                const limitedNodeIds = new Set(limitedNodes.map(n => n.id));
+
+                // Include all edges connected to loaded nodes (even if endpoint not loaded)
+                const connectedEdges = graphData.edges.filter(
+                    edge => limitedNodeIds.has(edge.fromId) || limitedNodeIds.has(edge.toId)
+                );
+
+                // Collect all node IDs referenced by edges
+                const referencedNodeIds = new Set();
+                connectedEdges.forEach(edge => {
+                    referencedNodeIds.add(edge.fromId);
+                    referencedNodeIds.add(edge.toId);
+                });
+
+                // Get all nodes that are either in initial batch or referenced by edges
+                const allNodeIds = new Set([...limitedNodeIds, ...referencedNodeIds]);
+                const allNodes = graphData.nodes.filter(n => allNodeIds.has(n.id));
+
+                // Filter edges to only include those where both endpoints exist
+                const validEdges = connectedEdges.filter(
+                    edge => allNodeIds.has(edge.fromId) && allNodeIds.has(edge.toId)
+                );
+
+                // Convert to D3 format
+                nodes = allNodes.map(n => ({
+                    id: n.id,
+                    kind: n.kind,
+                    name: n.name,
+                    filePath: n.filePath,
+                    startLine: n.startLine,
+                    description: n.description,
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height
+                }));
+
+                edges = validEdges.map(e => ({
+                    fromId: e.fromId,
+                    toId: e.toId,
+                    kind: e.kind,
+                    confidence: e.confidence
+                }));
+
+                loadedNodeIds = allNodeIds;
+                expandedNodes.clear();
+                selectedNode = null;
+
+                // Apply selected layout
+                const layout = document.getElementById('layout-select').value;
+                switch (layout) {
+                    case 'hierarchical':
+                        applyHierarchicalLayout();
+                        break;
+                    case 'circular':
+                        applyCircularLayout();
+                        break;
+                    case 'grid':
+                        applyGridLayout();
+                        break;
+                    default:
+                        initSimulation();
                 }
-            }, [expandedNodes, nodes, reactFlowInstance]);
 
-            const onNodeDoubleClick = useCallback((event, node) => {
-                // Toggle expansion
-                if (expandedNodes.has(node.id)) {
-                    setExpandedNodes(prev => {
-                        const newSet = new Set(prev);
-                        newSet.delete(node.id);
-                        return newSet;
-                    });
-                } else {
-                    setExpandedNodes(prev => new Set([...prev, node.id]));
-                    loadNodeNeighbors(node.id);
-                }
-            }, [expandedNodes, nodes, reactFlowInstance]);
-
-            useEffect(() => {
-                loadInitialNodes();
-            }, []);
-
-            return (
-                <div style={{ width: '100vw', height: '100vh' }} ref={reactFlowWrapper}>
-                    {isLoading && (
-                        <div className="loading-overlay">
-                            <div className="loading-spinner"></div>
-                        </div>
-                    )}
-
-                    <div className="controls">
-                        <h3>🔍 Spy-Code Graph</h3>
-                        <div className="control-group">
-                            <label>File Path Filter</label>
-                            <input
-                                type="text"
-                                value={filters.filePath}
-                                onChange={(e) => setFilters({...filters, filePath: e.target.value})}
-                                placeholder="e.g., src/lib.rs"
-                            />
-                        </div>
-                        <div className="control-group">
-                            <label>Node Kind</label>
-                            <select
-                                value={filters.nodeKinds}
-                                onChange={(e) => setFilters({...filters, nodeKinds: e.target.value})}
-                            >
-                                <option value="function">Functions</option>
-                                <option value="class">Classes</option>
-                                <option value="constant">Constants</option>
-                                <option value="all">All</option>
-                            </select>
-                        </div>
-                        <div className="control-group">
-                            <label>Edge Kind</label>
-                            <select
-                                value={filters.edgeKinds}
-                                onChange={(e) => setFilters({...filters, edgeKinds: e.target.value})}
-                            >
-                                <option value="calls">Calls</option>
-                                <option value="imports">Imports</option>
-                                <option value="references">References</option>
-                                <option value="all">All</option>
-                            </select>
-                        </div>
-                        <div className="control-group">
-                            <label>Initial Nodes</label>
-                            <select
-                                value={filters.maxNodes}
-                                onChange={(e) => setFilters({...filters, maxNodes: parseInt(e.target.value)})}
-                            >
-                                <option value="25">25 nodes</option>
-                                <option value="50">50 nodes</option>
-                                <option value="100">100 nodes</option>
-                                <option value="200">200 nodes</option>
-                            </select>
-                        </div>
-                        <div className="control-group">
-                            <button onClick={loadInitialNodes} disabled={isLoading}>
-                                {isLoading ? 'Loading...' : 'Reload Graph'}
-                            </button>
-                        </div>
-                        {status.message && (
-                            <div className={`status ${status.type}`}>
-                                {status.message}
-                            </div>
-                        )}
-                        <div style={{ marginTop: '16px', fontSize: '12px', color: '#666', lineHeight: '1.4' }}>
-                            💡 Click a node to load its neighbors<br/>
-                            💡 Double-click to toggle expansion
-                        </div>
-                    </div>
-
-                    {selectedNode && (
-                        <div className="node-details">
-                            <h3>📦 Node Details</h3>
-                            <p><span className="label">Name</span><span className="value">{selectedNode.label}</span></p>
-                            <p><span className="label">Kind</span><span className="value">{selectedNode.kind}</span></p>
-                            <p><span className="label">File</span><span className="value">{selectedNode.filePath}</span></p>
-                            <p><span className="label">Line</span><span className="value">{selectedNode.startLine}</span></p>
-                            {selectedNode.description && (
-                                <p><span className="label">Description</span><span className="value">{selectedNode.description}</span></p>
-                            )}
-                            <button onClick={() => setSelectedNode(null)}>Close</button>
-                        </div>
-                    )}
-
-                    <ReactFlow
-                        nodes={nodes}
-                        edges={edges}
-                        onNodesChange={onNodesChange}
-                        onEdgesChange={onEdgesChange}
-                        onConnect={onConnect}
-                        onNodeClick={onNodeClick}
-                        onNodeDoubleClick={onNodeDoubleClick}
-                        onInit={setReactFlowInstance}
-                        edgeTypes={edgeTypes}
-                        fitView
-                        defaultEdgeOptions={{ type: 'mindmap' }}
-                        minZoom={0.1}
-                        maxZoom={2}
-                    >
-                        <Background color="#1a1a2e" gap={24} size={1} />
-                        <Controls />
-                        <MiniMap
-                            nodeColor={(node) => {
-                                switch(node.className) {
-                                    case 'function': return '#7eb8ff';
-                                    case 'class': return '#ff6b6b';
-                                    case 'constant': return '#6bff6b';
-                                    default: return '#666';
-                                }
-                            }}
-                            maskColor="rgba(15, 15, 26, 0.8)"
-                            nodeStrokeWidth={2}
-                        />
-                    </ReactFlow>
-                </div>
-            );
+                setStatus(`Loaded ${nodes.length} nodes, ${edges.length} edges`, 'success');
+            } catch (error) {
+                setStatus(`Error: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
         }
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<GraphApp />);
+        // Load node neighbors
+        async function loadNodeNeighbors(nodeId) {
+            try {
+                const query = `
+                    query {
+                        node(id: "${nodeId}") {
+                            id
+                            kind
+                            name
+                            filePath
+                            startLine
+                            description
+                            callers {
+                                id
+                                kind
+                                name
+                                filePath
+                                startLine
+                            }
+                            callees {
+                                id
+                                kind
+                                name
+                                filePath
+                                startLine
+                            }
+                        }
+                    }
+                `;
+
+                const response = await fetch('/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+
+                const result = await response.json();
+
+                if (result.errors) {
+                    throw new Error(result.errors[0].message);
+                }
+
+                const nodeData = result.data.node;
+                const currentNode = nodes.find(n => n.id === nodeId);
+                const currentPos = currentNode ? { x: currentNode.x, y: currentNode.y } : { x: canvas.width / 2, y: canvas.height / 2 };
+
+                const newNodes = [];
+                const newEdges = [];
+
+                // Add callers
+                const callers = nodeData.callers || [];
+                callers.forEach((caller, index) => {
+                    if (!loadedNodeIds.has(caller.id)) {
+                        const angle = (index / callers.length) * Math.PI * 2;
+                        const radius = 200;
+                        newNodes.push({
+                            id: caller.id,
+                            kind: caller.kind,
+                            name: caller.name,
+                            filePath: caller.filePath,
+                            startLine: caller.startLine,
+                            x: currentPos.x + Math.cos(angle) * radius,
+                            y: currentPos.y + Math.sin(angle) * radius
+                        });
+                        loadedNodeIds.add(caller.id);
+                    }
+                    newEdges.push({
+                        fromId: caller.id,
+                        toId: nodeId,
+                        kind: 'CALLS',
+                        confidence: 1.0
+                    });
+                });
+
+                // Add callees
+                const callees = nodeData.callees || [];
+                callees.forEach((callee, index) => {
+                    if (!loadedNodeIds.has(callee.id)) {
+                        const angle = (index / callees.length) * Math.PI * 2 + Math.PI;
+                        const radius = 200;
+                        newNodes.push({
+                            id: callee.id,
+                            kind: callee.kind,
+                            name: callee.name,
+                            filePath: callee.filePath,
+                            startLine: callee.startLine,
+                            x: currentPos.x + Math.cos(angle) * radius,
+                            y: currentPos.y + Math.sin(angle) * radius
+                        });
+                        loadedNodeIds.add(callee.id);
+                    }
+                    newEdges.push({
+                        fromId: nodeId,
+                        toId: callee.id,
+                        kind: 'CALLS',
+                        confidence: 1.0
+                    });
+                });
+
+                nodes.push(...newNodes);
+                edges.push(...newEdges);
+
+                if (simulation) {
+                    simulation.nodes(nodes);
+                    simulation.force('link').links(edges);
+                    simulation.alpha(1).restart();
+                }
+
+                buildQuadtree();
+            } catch (error) {
+                console.error('Error loading neighbors:', error);
+            }
+        }
+
+        // UI helpers
+        function showLoading(show) {
+            isLoading = show;
+            document.getElementById('loading').style.display = show ? 'flex' : 'none';
+        }
+
+        function setStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+        }
+
+        function showNodeDetails(node) {
+            const details = document.getElementById('node-details');
+            const content = document.getElementById('node-details-content');
+
+            content.innerHTML = `
+                <p><span class="label">Name</span><span class="value">${node.name}</span></p>
+                <p><span class="label">Kind</span><span class="value">${node.kind}</span></p>
+                <p><span class="label">File</span><span class="value">${node.filePath}</span></p>
+                <p><span class="label">Line</span><span class="value">${node.startLine}</span></p>
+                ${node.description ? `<p><span class="label">Description</span><span class="value">${node.description}</span></p>` : ''}
+            `;
+
+            details.style.display = 'block';
+        }
+
+        function hideNodeDetails() {
+            document.getElementById('node-details').style.display = 'none';
+        }
+
+        function showTooltip(x, y, node) {
+            const tooltip = document.getElementById('tooltip');
+            tooltip.innerHTML = `
+                <div><span class="label">Name</span><span class="value">${node.name}</span></div>
+                <div><span class="label">Kind</span><span class="value">${node.kind}</span></div>
+                <div><span class="label">File</span><span class="value">${node.filePath}</span></div>
+            `;
+            tooltip.style.left = (x + 15) + 'px';
+            tooltip.style.top = (y + 15) + 'px';
+            tooltip.style.display = 'block';
+        }
+
+        function hideTooltip() {
+            document.getElementById('tooltip').style.display = 'none';
+        }
+
+        // Pan/zoom handling
+        let isDragging = false;
+        let isPanning = false;
+        let lastX, lastY;
+
+        canvas.addEventListener('mousedown', (e) => {
+            const node = findNodeAt(e.clientX, e.clientY);
+            if (node) {
+                isDragging = true;
+                selectedNode = node;
+                showNodeDetails(node);
+
+                // Expand on double-click
+                if (e.detail === 2) {
+                    if (expandedNodes.has(node.id)) {
+                        expandedNodes.delete(node.id);
+                    } else {
+                        expandedNodes.add(node.id);
+                        loadNodeNeighbors(node.id);
+                    }
+                }
+            } else {
+                isPanning = true;
+                lastX = e.clientX;
+                lastY = e.clientY;
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging && selectedNode) {
+                const worldPos = screenToWorld(e.clientX, e.clientY);
+                selectedNode.x = worldPos.x;
+                selectedNode.y = worldPos.y;
+                if (simulation) {
+                    simulation.alpha(0.3).restart();
+                }
+            } else if (isPanning) {
+                transform.x += e.clientX - lastX;
+                transform.y += e.clientY - lastY;
+                lastX = e.clientX;
+                lastY = e.clientY;
+            } else {
+                const node = findNodeAt(e.clientX, e.clientY);
+                if (node !== hoveredNode) {
+                    hoveredNode = node;
+                    if (node) {
+                        showTooltip(e.clientX, e.clientY, node);
+                    } else {
+                        hideTooltip();
+                    }
+                }
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+            isPanning = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+            isPanning = false;
+            hideTooltip();
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+            const newK = Math.max(0.1, Math.min(5, transform.k * zoomFactor));
+
+            // Zoom towards mouse position
+            const mouseX = e.clientX;
+            const mouseY = e.clientY;
+            const worldPos = screenToWorld(mouseX, mouseY);
+
+            transform.k = newK;
+            transform.x = mouseX - worldPos.x * newK;
+            transform.y = mouseY - worldPos.y * newK;
+        });
+
+        // Event listeners
+        document.getElementById('reload-btn').addEventListener('click', loadGraphData);
+        document.getElementById('close-details').addEventListener('click', hideNodeDetails);
+        document.getElementById('layout-select').addEventListener('change', () => {
+            const layout = document.getElementById('layout-select').value;
+            switch (layout) {
+                case 'hierarchical':
+                    applyHierarchicalLayout();
+                    break;
+                case 'circular':
+                    applyCircularLayout();
+                    break;
+                case 'grid':
+                    applyGridLayout();
+                    break;
+                default:
+                    initSimulation();
+            }
+        });
+
+        document.getElementById('zoom-in').addEventListener('click', () => {
+            transform.k = Math.min(5, transform.k * 1.2);
+        });
+
+        document.getElementById('zoom-out').addEventListener('click', () => {
+            transform.k = Math.max(0.1, transform.k / 1.2);
+        });
+
+        document.getElementById('zoom-fit').addEventListener('click', () => {
+            if (nodes.length === 0) return;
+
+            const bounds = {
+                minX: Math.min(...nodes.map(n => n.x)),
+                maxX: Math.max(...nodes.map(n => n.x)),
+                minY: Math.min(...nodes.map(n => n.y)),
+                maxY: Math.max(...nodes.map(n => n.y))
+            };
+
+            const padding = 50;
+            const width = bounds.maxX - bounds.minX + padding * 2;
+            const height = bounds.maxY - bounds.minY + padding * 2;
+
+            const scaleX = canvas.width / width;
+            const scaleY = canvas.height / height;
+            transform.k = Math.min(scaleX, scaleY, 1);
+
+            transform.x = (canvas.width - width * transform.k) / 2 - bounds.minX * transform.k;
+            transform.y = (canvas.height - height * transform.k) / 2 - bounds.minY * transform.k;
+        });
+
+        document.getElementById('search-input').addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            if (query.length < 2) return;
+
+            const found = nodes.find(n =>
+                n.name.toLowerCase().includes(query) ||
+                n.filePath.toLowerCase().includes(query)
+            );
+
+            if (found) {
+                selectedNode = found;
+                showNodeDetails(found);
+
+                // Center on node
+                transform.x = canvas.width / 2 - found.x * transform.k;
+                transform.y = canvas.height / 2 - found.y * transform.k;
+            }
+        });
+
+        document.getElementById('export-btn').addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = 'spy-code-graph.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        });
+
+        // Initialize
+        animate();
+        loadGraphData();
     </script>
 </body>
 </html>
