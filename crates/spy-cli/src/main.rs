@@ -891,39 +891,42 @@ fn cmd_model(command: ModelCommands) -> Result<()> {
 }
 
 async fn cmd_ask(query: String, json: bool) -> Result<()> {
-    let config = load_config()?;
-    let storage = Storage::open(&config.db_path)?;
+    let graphql_query = format!(
+        r#"query {{
+            semanticSearchEmbeddings(query: "{}", limit: 20) {{
+                node {{
+                    id
+                    kind
+                    name
+                    filePath
+                    startLine
+                }}
+                score
+            }}
+        }}"#,
+        query.replace('"', "\\\"")
+    );
 
-    let embedding_manager = EmbeddingManager::new(storage);
-    let mut registry = ModelRegistry::from_config();
-    let model = registry.get_default_model()?;
-    let results = embedding_manager.semantic_search(model.as_ref(), &query, 20)?;
+    let data = execute_query(&graphql_query).await?;
+    let results = data["semanticSearchEmbeddings"]
+        .as_array()
+        .context("Invalid response format")?;
 
     if json {
-        let json_results: Vec<_> = results
-            .iter()
-            .map(|(node, score)| {
-                serde_json::json!({
-                    "node_id": node.node_id.as_str(),
-                    "name": node.name,
-                    "kind": node.kind.as_str(),
-                    "file_path": node.file_path,
-                    "start_line": node.start_line,
-                    "score": score
-                })
-            })
-            .collect();
-        println!("{}", serde_json::to_string_pretty(&json_results)?);
+        println!("{}", serde_json::to_string_pretty(&results)?);
     } else {
         println!("Results for query: {}", query);
-        for (node, score) in results {
+        for res in results {
+            let node = &res["node"];
             println!(
                 "  {} ({}) - {} (score: {:.4}) [{}:{}]",
-                node.node_id, node.kind, node.name, score, node.file_path, node.start_line
+                node["id"].as_str().unwrap_or(""),
+                node["kind"].as_str().unwrap_or(""),
+                node["name"].as_str().unwrap_or(""),
+                res["score"].as_f64().unwrap_or(0.0),
+                node["filePath"].as_str().unwrap_or(""),
+                node["startLine"].as_i64().unwrap_or(0)
             );
-            if let Some(desc) = &node.description {
-                println!("    Description: {}", desc);
-            }
         }
     }
 
@@ -1020,7 +1023,7 @@ fn cmd_install_skills(dry_run: bool, skip_index: bool, force_config: bool) -> Re
 
     let script_path = possible_paths
         .into_iter()
-        .filter_map(|p| p)
+        .flatten()
         .find(|p| p.exists())
         .ok_or_else(|| {
             anyhow::anyhow!(

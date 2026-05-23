@@ -226,8 +226,8 @@ impl EmbeddingManager {
         let query_vec = query_embedding;
 
         let rows: Vec<(String, Vec<u8>)> = self.storage.query_raw(
-            "SELECT node_id, embedding FROM node_embeddings",
-            &[],
+            "SELECT node_id, embedding FROM node_embeddings WHERE embedding_model = ?1",
+            &[&model.model_name()],
             |row| {
                 let node_id: String = row.get(0)?;
                 let embedding: Vec<u8> = row.get(1)?;

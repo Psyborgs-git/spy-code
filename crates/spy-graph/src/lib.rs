@@ -1,6 +1,5 @@
 use async_graphql::{Context, EmptyMutation, EmptySubscription, Object, Schema, SimpleObject};
 use spy_core::{EdgeKind, Language, NodeKind};
-use spy_embeddings::EmbeddingManager;
 use spy_storage::Storage;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -436,22 +435,49 @@ impl QueryRoot {
         query: String,
         limit: Option<i32>,
     ) -> async_graphql::Result<Vec<SearchResult>> {
-        let _state = ctx.data::<Arc<GraphState>>()?;
-        let _storage = _state.storage.lock().unwrap();
+        let state = ctx.data::<Arc<GraphState>>()?;
+        let storage = state.storage.lock().unwrap();
         let limit = limit.unwrap_or(20) as usize;
 
-        // Create a new storage connection for embedding manager
-        let embedding_storage = Storage::open(".spy-code/graph.db")
-            .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?;
-
-        let embedding_manager = EmbeddingManager::new(embedding_storage);
+        // Get model and generate query embedding
         let mut registry = spy_embeddings::ModelRegistry::from_config();
         let model = registry
             .get_default_model()
             .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?;
-        let results: Vec<(spy_core::Node, f64)> = embedding_manager
-            .semantic_search(model.as_ref(), &query, limit)
+        let query_embedding = model
+            .embed(&query)
             .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?;
+
+        // Query embeddings with model filter
+        let rows: Vec<(String, Vec<u8>)> = storage
+            .query_raw(
+                "SELECT node_id, embedding FROM node_embeddings WHERE embedding_model = ?1",
+                &[&model.model_name()],
+                |row| {
+                    let node_id: String = row.get(0)?;
+                    let embedding: Vec<u8> = row.get(1)?;
+                    Ok((node_id, embedding))
+                },
+            )
+            .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?;
+
+        // Calculate similarities
+        let mut results = Vec::new();
+        for (node_id, embedding_bytes) in rows {
+            let embedding_vec: Vec<f32> = embedding_bytes
+                .chunks_exact(4)
+                .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
+                .collect();
+
+            let similarity = cosine_similarity(&query_embedding, &embedding_vec);
+
+            if let Ok(Some(node)) = storage.get_node(&node_id) {
+                results.push((node, similarity));
+            }
+        }
+
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        results.truncate(limit);
 
         Ok(results
             .into_iter()
@@ -467,23 +493,58 @@ impl QueryRoot {
         &self,
         ctx: &Context<'_>,
     ) -> async_graphql::Result<EmbeddingStatusGQL> {
-        let _state = ctx.data::<Arc<GraphState>>()?;
+        let state = ctx.data::<Arc<GraphState>>()?;
+        let storage = state.storage.lock().unwrap();
 
-        // Create a new storage connection for embedding manager
-        let embedding_storage = Storage::open(".spy-code/graph.db")
+        let status: Option<String> = storage
+            .query_row_raw(
+                "SELECT status FROM embedding_progress WHERE id = (SELECT MAX(id) FROM embedding_progress)",
+                &[],
+                |row| row.get(0),
+            )
             .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?;
 
-        let embedding_manager = EmbeddingManager::new(embedding_storage);
-        let status = embedding_manager
-            .get_embedding_status()
+        let total_nodes: i32 = storage
+            .query_row_raw(
+                "SELECT total_nodes FROM embedding_progress WHERE id = (SELECT MAX(id) FROM embedding_progress)",
+                &[],
+                |row| row.get(0),
+            )
+            .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?
+            .unwrap_or(0);
+
+        let processed_nodes: i32 = storage
+            .query_row_raw(
+                "SELECT processed_nodes FROM embedding_progress WHERE id = (SELECT MAX(id) FROM embedding_progress)",
+                &[],
+                |row| row.get(0),
+            )
+            .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?
+            .unwrap_or(0);
+
+        let started_at: i64 = storage
+            .query_row_raw(
+                "SELECT started_at FROM embedding_progress WHERE id = (SELECT MAX(id) FROM embedding_progress)",
+                &[],
+                |row| row.get(0),
+            )
+            .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?
+            .unwrap_or(0);
+
+        let completed_at: Option<i64> = storage
+            .query_row_raw(
+                "SELECT completed_at FROM embedding_progress WHERE id = (SELECT MAX(id) FROM embedding_progress)",
+                &[],
+                |row| row.get(0),
+            )
             .map_err(|e: anyhow::Error| async_graphql::Error::new(e.to_string()))?;
 
         Ok(EmbeddingStatusGQL {
-            total_nodes: status.total_nodes,
-            processed_nodes: status.processed_nodes,
-            status: status.status,
-            started_at: status.started_at,
-            completed_at: status.completed_at,
+            total_nodes,
+            processed_nodes,
+            status: status.unwrap_or_else(|| "not_started".to_string()),
+            started_at,
+            completed_at,
         })
     }
 
@@ -564,6 +625,22 @@ impl QueryRoot {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+
+    let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+    if norm_a == 0.0 || norm_b == 0.0 {
+        return 0.0;
+    }
+
+    (dot_product / (norm_a * norm_b)) as f64
+}
 
 fn matches_kind(node_kind: &NodeKind, gql_kind: &NodeKindGQL) -> bool {
     matches!(

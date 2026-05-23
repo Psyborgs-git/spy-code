@@ -35,6 +35,17 @@ impl Storage {
         Ok(storage)
     }
 
+    pub fn open_read_only<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let path = path.as_ref();
+        let conn = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .context("Failed to open database in read-only mode")?;
+
+        Ok(Storage { conn })
+    }
+
     fn migrate(&mut self) -> Result<()> {
         self.conn.execute_batch(
             r#"
