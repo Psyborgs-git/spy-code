@@ -334,7 +334,7 @@
                         // cluster by folder logic
                         // Using char code sum as a simple numerical value for concentric circles
                         let sum = 0;
-                        const folder = node.data('folder');
+                        const folder = node.data('folder') || '';
                         for(let i=0; i<folder.length; i++) {
                             sum += folder.charCodeAt(i);
                         }
