@@ -220,6 +220,18 @@ fn tools_list() -> Value {
                 }
             },
             {
+                "name": "timeline",
+                "description": "Navigate nodes and relationships on any selected git commit/state for a specific file. Useful to see historical differences.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "git_ref": { "type": "string", "description": "The git commit or ref. Defaults to HEAD." },
+                        "file_path": { "type": "string", "description": "The file path relative to repo root." }
+                    },
+                    "required": ["file_path"]
+                }
+            },
+            {
                 "name": "stats",
                 "description": "Return index statistics (node count, edge count, file count, last indexed SHA).",
                 "inputSchema": {
@@ -335,6 +347,34 @@ async fn handle_tool_call(
             Ok(
                 json!({ "content": [{ "type": "text", "text": serde_json::to_value(&result)?.to_string() }] }),
             )
+        }
+
+        "timeline" => {
+            let git_ref = args.get("git_ref").and_then(|v| v.as_str()).unwrap_or("HEAD");
+            let file_path = args.get("file_path").and_then(|v| v.as_str()).context("Missing 'file_path'")?;
+            let path = std::path::Path::new(file_path);
+
+            let repo = spy_git::GitRepo::discover(std::path::Path::new("."))
+                .context("Failed to open git repo")?
+                .context("Not in a git repository")?;
+
+            let source_str = repo.cat_file_at_ref(git_ref, path)?;
+            let source = source_str.into_bytes();
+
+            let lang = spy_indexer::detect_language(path).context("Unsupported language")?;
+
+            let ctx = spy_parser::parse_file(path, source.clone(), lang)?;
+            let resolver = spy_resolvers::get_resolver(lang).context("No resolver available for language")?;
+
+            let nodes = resolver.extract_nodes(&ctx)?;
+
+            let mut scope = spy_core::ProjectScope::new();
+            for node in &nodes {
+                scope.add_node(node.clone());
+            }
+            let edges = resolver.extract_edges(&ctx, &scope)?;
+
+            Ok(json!({ "content": [{ "type": "text", "text": serde_json::to_string(&json!({ "nodes": nodes, "edges": edges }))? }] }))
         }
 
         "changed_since" => {

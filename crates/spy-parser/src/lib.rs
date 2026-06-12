@@ -12,6 +12,7 @@ pub fn parse_file(path: &Path, source: Vec<u8>, language: Language) -> Result<Fi
         Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
         Language::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
         Language::Go => tree_sitter_go::LANGUAGE.into(),
+        Language::Java => tree_sitter_java::LANGUAGE.into(),
     };
 
     parser
@@ -79,6 +80,15 @@ mod tests {
         let source = b"package main\nfunc main() {}";
         let ctx = parse_file(Path::new("test.go"), source.to_vec(), Language::Go)?;
         assert_eq!(ctx.language, Language::Go);
+        assert!(ctx.tree.root_node().child_count() > 0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_java() -> Result<()> {
+        let source = b"class Main { public static void main(String[] args) {} }";
+        let ctx = parse_file(Path::new("test.java"), source.to_vec(), Language::Java)?;
+        assert_eq!(ctx.language, Language::Java);
         assert!(ctx.tree.root_node().child_count() > 0);
         Ok(())
     }

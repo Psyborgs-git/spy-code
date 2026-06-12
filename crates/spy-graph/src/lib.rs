@@ -671,6 +671,7 @@ pub enum LanguageGQL {
     TypeScript,
     JavaScript,
     Go,
+    Java,
 }
 
 impl From<spy_core::Language> for LanguageGQL {
@@ -681,6 +682,7 @@ impl From<spy_core::Language> for LanguageGQL {
             spy_core::Language::TypeScript => LanguageGQL::TypeScript,
             spy_core::Language::JavaScript => LanguageGQL::JavaScript,
             spy_core::Language::Go => LanguageGQL::Go,
+            spy_core::Language::Java => LanguageGQL::Java,
         }
     }
 }

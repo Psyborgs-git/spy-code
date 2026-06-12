@@ -41,15 +41,41 @@ impl Indexer {
 
                 match self.parse_and_extract_nodes(file_path, source.clone(), lang) {
                     Ok(nodes) => {
-                        // Remove stale nodes for this file then insert fresh ones
-                        self.storage
-                            .delete_nodes_for_file(&file_path.to_string_lossy())?;
-                        scope.remove_nodes_for_file(&file_path.to_string_lossy());
+                        let path_str = file_path.to_string_lossy().to_string();
+                        let existing_nodes = self.storage.get_nodes_for_files(&[path_str.clone()]).unwrap_or_default();
 
-                        for node in nodes {
+                        let existing_ids: std::collections::HashSet<String> = existing_nodes.iter().map(|n| n.node_id.as_str().to_string()).collect();
+                        let new_ids: std::collections::HashSet<String> = nodes.iter().map(|n| n.node_id.as_str().to_string()).collect();
+
+                        let mut existing_map: std::collections::HashMap<String, &spy_core::Node> = std::collections::HashMap::new();
+                        for n in &existing_nodes {
+                            existing_map.insert(n.node_id.as_str().to_string(), n);
+                        }
+
+                        scope.remove_nodes_for_file(&path_str);
+
+                        for node in &nodes {
+                            let node_id_str = node.node_id.as_str().to_string();
+                            let needs_update = if let Some(existing) = existing_map.get(&node_id_str) {
+                                existing.content_hash != node.content_hash || existing.start_line != node.start_line || existing.end_line != node.end_line
+                            } else {
+                                true
+                            };
+
+                            if needs_update {
+                                // Important: if it's an update, we must delete old edges first before pass 2 re-extracts them.
+                                // It's safer to just wipe all edges connected to this node when it is modified.
+                                let _ = self.storage.delete_edges_for_node(&node_id_str);
+                                self.storage.upsert_node(node)?;
+                                stats.nodes_extracted += 1;
+                            }
                             scope.add_node(node.clone());
-                            self.storage.upsert_node(&node)?;
-                            stats.nodes_extracted += 1;
+                        }
+
+                        for id in existing_ids {
+                            if !new_ids.contains(&id) {
+                                self.storage.delete_node(&id)?;
+                            }
                         }
 
                         let now = std::time::SystemTime::now()
@@ -458,6 +484,7 @@ pub fn detect_language(path: &Path) -> Option<Language> {
             "ts" | "tsx" => Some(Language::TypeScript),
             "js" | "jsx" | "mjs" | "cjs" => Some(Language::JavaScript),
             "go" => Some(Language::Go),
+            "java" => Some(Language::Java),
             _ => None,
         })
 }

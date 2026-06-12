@@ -92,6 +92,7 @@ pub enum Language {
     TypeScript,
     JavaScript,
     Go,
+    Java,
 }
 
 impl Language {
@@ -102,6 +103,7 @@ impl Language {
             Language::TypeScript => "typescript",
             Language::JavaScript => "javascript",
             Language::Go => "go",
+            Language::Java => "java",
         }
     }
 }
