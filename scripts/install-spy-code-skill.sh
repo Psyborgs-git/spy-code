@@ -167,6 +167,14 @@ detect_environment() {
         return 0
     fi
 
+    # Check for VS Code
+    if [ -d "$HOME/.vscode" ]; then
+        ENVIRONMENT="vscode"
+        print_success "Detected: VS Code" >&2
+        echo "vscode"
+        return 0
+    fi
+
     print_warning "Could not detect specific AI coding environment" >&2
     print_info "Will use generic MCP configuration" >&2
     ENVIRONMENT="generic"
