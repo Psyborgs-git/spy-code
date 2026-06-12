@@ -92,6 +92,15 @@ pub enum Language {
     TypeScript,
     JavaScript,
     Go,
+    Java,
+    Markdown,
+    Text,
+    Image,
+    Pdf,
+    Docx,
+    Video,
+    Svg,
+    Other,
 }
 
 impl Language {
@@ -102,6 +111,15 @@ impl Language {
             Language::TypeScript => "typescript",
             Language::JavaScript => "javascript",
             Language::Go => "go",
+            Language::Java => "java",
+            Language::Markdown => "markdown",
+            Language::Text => "text",
+            Language::Image => "image",
+            Language::Pdf => "pdf",
+            Language::Docx => "docx",
+            Language::Video => "video",
+            Language::Svg => "svg",
+            Language::Other => "other",
         }
     }
 }
@@ -119,6 +137,7 @@ pub enum NodeKind {
     Class,
     Constant,
     Dependency,
+    Asset,
 }
 
 impl NodeKind {
@@ -128,6 +147,7 @@ impl NodeKind {
             NodeKind::Class => "class",
             NodeKind::Constant => "constant",
             NodeKind::Dependency => "dependency",
+            NodeKind::Asset => "asset",
         }
     }
 }
@@ -322,6 +342,8 @@ pub struct Config {
     pub indexing: IndexingConfig,
     #[serde(default)]
     pub search: SearchConfig,
+    #[serde(default)]
+    pub assets: AssetsConfig,
 }
 
 const fn default_version() -> u32 {
@@ -342,6 +364,8 @@ pub struct LanguagesConfig {
     pub typescript: Option<LanguageConfig>,
     #[serde(default)]
     pub go: Option<LanguageConfig>,
+    #[serde(default)]
+    pub java: Option<LanguageConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -545,6 +569,7 @@ impl Default for Config {
             git: GitConfig::default(),
             indexing: IndexingConfig::default(),
             search: SearchConfig::default(),
+            assets: AssetsConfig::default(),
         }
     }
 }
@@ -581,4 +606,10 @@ mod tests {
         assert_eq!(class, "Baz");
         assert_eq!(symbol, "qux");
     }
+}
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct AssetsConfig {
+    #[serde(default)]
+    pub plugin_command: Option<String>,
 }

@@ -266,10 +266,105 @@ impl Indexer {
         source: Vec<u8>,
         lang: Language,
     ) -> Result<Vec<spy_core::Node>> {
-        let ctx = spy_parser::parse_file(path, source, lang)?;
+        let ctx = spy_parser::parse_file(path, source.clone(), lang)?;
         let resolver =
             spy_resolvers::get_resolver(lang).context("No resolver available for language")?;
-        resolver.extract_nodes(&ctx)
+
+        let mut nodes = resolver.extract_nodes(&ctx)?;
+
+        if matches!(lang, Language::Image | Language::Pdf | Language::Docx | Language::Video | Language::Svg | Language::Other) {
+            for node in &mut nodes {
+                // Try plugin first
+                let extracted_text = self.extract_with_plugin(path).or_else(|| self.extract_with_api(path, lang));
+                if let Some(text) = extracted_text {
+                    node.description = Some(text);
+                }
+            }
+        }
+
+        Ok(nodes)
+    }
+
+    fn extract_with_plugin(&self, path: &Path) -> Option<String> {
+        if let Some(cmd) = &self.config.assets.plugin_command {
+            let parts: Vec<&str> = cmd.split_whitespace().collect();
+            if parts.is_empty() { return None; }
+
+            let mut command = std::process::Command::new(parts[0]);
+            for arg in &parts[1..] {
+                command.arg(arg);
+            }
+            command.arg(path);
+
+            if let Ok(output) = command.output() {
+                if output.status.success() {
+                    return String::from_utf8(output.stdout).ok();
+                }
+            }
+        }
+        None
+    }
+
+    fn extract_with_api(&self, path: &Path, lang: Language) -> Option<String> {
+        // Fallback to OpenAI API for images and audio/video if API key exists
+        let api_key = std::env::var("OPENAI_API_KEY").ok()?;
+        let client = reqwest::blocking::Client::new();
+        use base64::Engine;
+
+        match lang {
+            Language::Image => {
+                let bytes = std::fs::read(path).ok()?;
+                let base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                let mime = match path.extension().and_then(|e| e.to_str()) {
+                    Some("png") => "image/png",
+                    Some("jpeg") | Some("jpg") => "image/jpeg",
+                    Some("webp") => "image/webp",
+                    Some("gif") => "image/gif",
+                    _ => "image/jpeg",
+                };
+
+                let data_url = format!("data:{};base64,{}", mime, base64);
+                let response = client.post("https://api.openai.com/v1/chat/completions")
+                    .bearer_auth(&api_key)
+                    .json(&serde_json::json!({
+                        "model": "gpt-4-vision-preview",
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": [
+                                    { "type": "text", "text": "Describe the contents of this image." },
+                                    { "type": "image_url", "image_url": { "url": data_url } }
+                                ]
+                            }
+                        ],
+                        "max_tokens": 500
+                    }))
+                    .send()
+                    .ok()?;
+
+                let json: serde_json::Value = response.json().ok()?;
+                json["choices"][0]["message"]["content"].as_str().map(|s: &str| s.to_string())
+            },
+            Language::Video => {
+                // OpenAI whisper API for audio extraction.
+                // We assume small files or already extracted audio since we just pass the file.
+                // In a real production system, we would need to convert video to audio first.
+                // Here we make a best effort with the direct API.
+                let form = reqwest::blocking::multipart::Form::new()
+                    .text("model", "whisper-1")
+                    .file("file", path).ok()?;
+
+                let response = client.post("https://api.openai.com/v1/audio/transcriptions")
+                    .bearer_auth(&api_key)
+                    .multipart(form)
+                    .send()
+                    .ok()?;
+
+                let json: serde_json::Value = response.json().ok()?;
+                json["text"].as_str().map(|s: &str| s.to_string())
+            },
+            _ => None
+        }
     }
 
     fn extract_edges(
