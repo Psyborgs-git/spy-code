@@ -81,6 +81,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
                // Use spawn to avoid Windows quoting issues with multi-line queries
                const child = spawn(spyCodePath, ['query', query, '--json']);
+               child.on('error', (err: any) => {
+                   webviewView.webview.postMessage({ type: 'error', message: `Failed to start process: ${err.message}` });
+               });
 
                let stdout = '';
                let stderr = '';
