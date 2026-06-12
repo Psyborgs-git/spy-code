@@ -34,7 +34,7 @@ function validateAllSkills() {
   const environmentsDir = path.join(skillsDir, 'environments');
   
   const universalSkills = ['code-navigation.md', 'call-graph-analysis.md', 'semantic-search.md', 'change-tracking.md', 'graph-visualization.md'];
-  const environmentSkills = ['cursor-skills.md', 'windsurf-skills.md', 'copilot-skills.md', 'claude-skills.md'];
+  const environmentSkills = ['cursor-skills.md', 'windsurf-skills.md', 'copilot-skills.md', 'claude-skills.md', 'gemini-skills.md', 'codex-skills.md', 'opencode-skills.md'];
   
   let allValid = true;
   const allErrors: string[] = [];

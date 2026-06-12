@@ -292,3 +292,38 @@ As Copilot's MCP integration evolves:
 - Automatic re-indexing on file changes
 - Integration with Copilot's testing features
 - Enhanced PR review capabilities
+
+## When to Use
+
+Use this skill when you need to:
+- Get context-aware autocomplete suggestions
+- Ask specific questions about codebase architecture in Copilot Chat
+- Trace caller and callee workflows without leaving the editor
+- Determine the scope of a feature change
+
+## Available Tools
+
+### MCP Tools
+- `search` - Find code symbols
+- `get_node` - Retrieve code details
+- `callers` - Get functions calling a node
+- `callees` - Get functions called by a node
+
+### CLI Commands (Local Use)
+To use `spy-code` manually alongside Copilot:
+```bash
+spy-code search "payment"
+spy-code callers <node_id>
+```
+
+### Running MCP Locally
+To run the MCP server for Copilot:
+```bash
+spy-code serve --mcp
+```
+
+## Best Practices
+
+1. **Ask Contextual Questions**: Tell Copilot to "use spy-code to find the callers of X".
+2. **Use CLI for Context Feeding**: Run CLI commands in the terminal to copy/paste specific call graphs into Copilot chat.
+3. **Keep Context Localized**: Only fetch nodes necessary for the current completion task.

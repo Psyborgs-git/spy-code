@@ -167,7 +167,7 @@ enum Commands {
         #[arg(long)]
         open: bool,
     },
-    /// Install spy-code skills for AI coding environments (Cursor, Windsurf, Claude Desktop, etc.)
+    /// Install spy-code skills for AI coding environments (Cursor, Windsurf, Claude Desktop, Copilot, Gemini, Codex, OpenCode, etc.)
     InstallSkills {
         /// Show what would be done without making changes
         #[arg(long)]

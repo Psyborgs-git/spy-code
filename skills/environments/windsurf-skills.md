@@ -321,3 +321,38 @@ agentHooks.registerHook(HookType.POST_WRITE_CODE, async (context) => {
 3. **Integrate with Cascade** - Use spy-code data in Cascade's decision-making
 4. **Custom hooks** - Create custom hooks for your specific workflows
 5. **Monitor events** - Use event bus to monitor and react to changes
+
+## When to Use
+
+Use this skill when you need to:
+- Use Windsurf's Cascade feature to analyze full repositories
+- Trace execution flow for complex debugging
+- Navigate massive codebases without opening every file
+- Automate multi-file changes safely
+
+## Available Tools
+
+### MCP Tools
+- `search` - Find code symbols
+- `get_node` - Retrieve code details
+- `callers` - Get functions calling a node
+- `callees` - Get functions called by a node
+
+### CLI Commands (Local Use)
+To use `spy-code` manually alongside Windsurf:
+```bash
+spy-code search "init"
+spy-code callers <node_id>
+```
+
+### Running MCP Locally
+To run the MCP server for Windsurf:
+```bash
+spy-code serve --mcp
+```
+
+## Best Practices
+
+1. **Pre-Index for Cascade**: Run `spy-code index` before starting a Cascade session to ensure up-to-date graphs.
+2. **Use Call Graphs in Prompts**: Ask Cascade to pull the caller graph before suggesting an architectural change.
+3. **Minimize Noise**: Target specific nodes rather than retrieving entire directories.

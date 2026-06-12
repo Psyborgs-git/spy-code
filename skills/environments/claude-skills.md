@@ -353,3 +353,39 @@ Claude:
 5. Provide rollback plan
 6. Estimate effort
 ```
+
+## When to Use
+
+Use this skill when you need to:
+- Understand large codebases through architectural overviews
+- Find the impact of changes across multiple files
+- Trace call graphs to understand execution flow
+- Generate context-aware code or refactoring suggestions
+
+## Available Tools
+
+### MCP Tools
+- `search` - Find code symbols
+- `get_node` - Retrieve code details
+- `callers` - Get functions calling a node
+- `callees` - Get functions called by a node
+- `changed_since` - Find modified files
+
+### CLI Commands (Local Use)
+You can also use spy-code via CLI to feed Claude:
+```bash
+spy-code search "auth"
+spy-code callers <node_id>
+```
+
+### Running MCP Locally
+To run the MCP server for Claude:
+```bash
+spy-code serve --mcp
+```
+
+## Best Practices
+
+1. **Use Search Before Navigating**: Don't guess file names.
+2. **Limit Depth**: When finding callers/callees, restrict depth to avoid context bloat.
+3. **Use CLI for Scripts**: Use the standalone CLI integration to pull contexts into automated Claude coding scripts.
