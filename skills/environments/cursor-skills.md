@@ -214,3 +214,39 @@ Add these commands to Cursor's command palette:
 - Use filters to reduce query scope
 - Consider re-indexing with `--full` flag
 - Check if embeddings are needed for semantic search
+
+## When to Use
+
+Use this skill when you need to:
+- Conduct deep codebase analysis through Cursor's Composer or Chat
+- Map out architectures and dependencies
+- Check recent changes and their impacts across the repo
+- Verify the structural impact of an AI-generated refactor
+
+## Available Tools
+
+### MCP Tools
+- `search` - Find code symbols
+- `get_node` - Retrieve code details
+- `callers` - Get functions calling a node
+- `callees` - Get functions called by a node
+- `changed_since` - Find modified files
+
+### CLI Commands (Local Use)
+To use `spy-code` manually alongside Cursor:
+```bash
+spy-code search "main"
+spy-code callers <node_id>
+```
+
+### Running MCP Locally
+To run the MCP server for Cursor:
+```bash
+spy-code serve --mcp
+```
+
+## Best Practices
+
+1. **Verify Refactors**: After generating code, ask Cursor to use spy-code to verify caller integrity.
+2. **Use CLI for Context Feeding**: Run CLI commands in Cursor's terminal and mention the output in Chat.
+3. **Use Semantic Search**: Fall back to semantic queries if exact symbol names are unknown.

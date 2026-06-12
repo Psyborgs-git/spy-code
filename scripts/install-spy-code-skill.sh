@@ -143,6 +143,38 @@ detect_environment() {
         return 0
     fi
 
+    # Check for Gemini
+    if [ -d "$HOME/.gemini" ] || [ -f "$HOME/.gemini/config.json" ]; then
+        ENVIRONMENT="gemini"
+        print_success "Detected: Gemini" >&2
+        echo "gemini"
+        return 0
+    fi
+
+    # Check for Codex
+    if [ -d "$HOME/.codex" ] || [ -f "$HOME/.codex/config.json" ]; then
+        ENVIRONMENT="codex"
+        print_success "Detected: Codex" >&2
+        echo "codex"
+        return 0
+    fi
+
+    # Check for OpenCode
+    if [ -d "$HOME/.opencode" ] || [ -f "$HOME/.opencode/config.json" ]; then
+        ENVIRONMENT="opencode"
+        print_success "Detected: OpenCode" >&2
+        echo "opencode"
+        return 0
+    fi
+
+    # Check for VS Code
+    if [ -d "$HOME/.vscode" ]; then
+        ENVIRONMENT="vscode"
+        print_success "Detected: VS Code" >&2
+        echo "vscode"
+        return 0
+    fi
+
     print_warning "Could not detect specific AI coding environment" >&2
     print_info "Will use generic MCP configuration" >&2
     ENVIRONMENT="generic"
@@ -208,6 +240,9 @@ configure_mcp() {
     local config_dir=""
     local config_file=""
     local source_config="$REPO_ROOT/configs/mcp/${env}.json"
+    if [ ! -f "$source_config" ]; then
+        source_config="$REPO_ROOT/configs/mcp/generic.json"
+    fi
 
     # Set config paths based on environment
     case $env in
@@ -226,6 +261,18 @@ configure_mcp() {
                 config_dir="$HOME/.config/Claude"
             fi
             config_file="$config_dir/claude_desktop_config.json"
+            ;;
+        gemini)
+            config_dir="$HOME/.gemini"
+            config_file="$config_dir/config.json"
+            ;;
+        codex)
+            config_dir="$HOME/.codex"
+            config_file="$config_dir/config.json"
+            ;;
+        opencode)
+            config_dir="$HOME/.opencode"
+            config_file="$config_dir/config.json"
             ;;
         vscode)
             config_dir="$HOME/.vscode"
