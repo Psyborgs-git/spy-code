@@ -370,8 +370,9 @@
             }
 
             cy.nodes().forEach(node => {
-                if(node.data('name').toLowerCase().includes(queryText) || node.data('filePath').toLowerCase().includes(queryText)) {
-                    node.style('display', 'element');
+                const name = (node.data('name') || '').toLowerCase();
+                const filePath = (node.data('filePath') || '').toLowerCase();
+                if(name.includes(queryText) || filePath.includes(queryText)) {
                 } else {
                     node.style('display', 'none');
                 }
