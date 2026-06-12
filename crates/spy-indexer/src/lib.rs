@@ -42,7 +42,7 @@ impl Indexer {
                 match self.parse_and_extract_nodes(file_path, source.clone(), lang) {
                     Ok(nodes) => {
                         let path_str = file_path.to_string_lossy().to_string();
-                        let existing_nodes = self.storage.get_nodes_for_files(&[path_str.clone()]).unwrap_or_default();
+                        let existing_nodes = self.storage.get_nodes_for_files(&[path_str.clone()])?;
 
                         let existing_ids: std::collections::HashSet<String> = existing_nodes.iter().map(|n| n.node_id.as_str().to_string()).collect();
                         let new_ids: std::collections::HashSet<String> = nodes.iter().map(|n| n.node_id.as_str().to_string()).collect();
