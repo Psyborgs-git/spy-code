@@ -39,7 +39,7 @@ fn test_detect_language() {
         Some(Language::JavaScript)
     );
     assert_eq!(detect_language(Path::new("foo.go")), Some(Language::Go));
-    assert_eq!(detect_language(Path::new("foo.txt")), None);
+    assert_eq!(detect_language(Path::new("foo.txt")), Some(Language::Text));
 }
 
 #[test]

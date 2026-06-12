@@ -44,7 +44,7 @@ impl Resolver for JavaScriptResolver {
 
 fn extract_js_nodes(ctx: &FileContext) -> Result<Vec<Node>> {
     let mut nodes = Vec::new();
-    let root = ctx.tree.root_node();
+    let root = ctx.tree.as_ref().unwrap().root_node();
 
     let dir = ctx.path.parent().and_then(|p| p.to_str()).unwrap_or(".");
     let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
@@ -248,7 +248,7 @@ fn collapse_overloads(nodes: &mut Vec<Node>) {
 
 fn extract_js_edges(ctx: &FileContext, scope: &ProjectScope) -> Result<Vec<Edge>> {
     let mut edges = Vec::new();
-    let root = ctx.tree.root_node();
+    let root = ctx.tree.as_ref().unwrap().root_node();
     walk_for_edges(&root, &ctx.source, ctx, scope, &mut edges)?;
     Ok(edges)
 }

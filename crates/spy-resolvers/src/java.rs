@@ -16,7 +16,7 @@ impl Resolver for JavaResolver {
     fn extract_nodes(&self, ctx: &FileContext) -> Result<Vec<Node>> {
         let mut nodes = Vec::new();
         let source = &ctx.source;
-        let root = ctx.tree.root_node();
+        let root = ctx.tree.as_ref().unwrap().root_node();
         let dir = ctx.path.parent().and_then(|p| p.to_str()).unwrap_or(".");
         let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
 
@@ -28,7 +28,7 @@ impl Resolver for JavaResolver {
     fn extract_edges(&self, ctx: &FileContext, scope: &ProjectScope) -> Result<Vec<Edge>> {
         let mut edges = Vec::new();
         let source = &ctx.source;
-        let root = ctx.tree.root_node();
+        let root = ctx.tree.as_ref().unwrap().root_node();
 
         walk_for_edges(&root, source, ctx, scope, &mut edges)?;
 
