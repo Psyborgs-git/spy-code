@@ -93,6 +93,14 @@ pub enum Language {
     JavaScript,
     Go,
     Java,
+    Markdown,
+    Text,
+    Image,
+    Pdf,
+    Docx,
+    Video,
+    Svg,
+    Other,
 }
 
 impl Language {
@@ -104,6 +112,14 @@ impl Language {
             Language::JavaScript => "javascript",
             Language::Go => "go",
             Language::Java => "java",
+            Language::Markdown => "markdown",
+            Language::Text => "text",
+            Language::Image => "image",
+            Language::Pdf => "pdf",
+            Language::Docx => "docx",
+            Language::Video => "video",
+            Language::Svg => "svg",
+            Language::Other => "other",
         }
     }
 }
@@ -121,6 +137,7 @@ pub enum NodeKind {
     Class,
     Constant,
     Dependency,
+    Asset,
 }
 
 impl NodeKind {
@@ -130,6 +147,7 @@ impl NodeKind {
             NodeKind::Class => "class",
             NodeKind::Constant => "constant",
             NodeKind::Dependency => "dependency",
+            NodeKind::Asset => "asset",
         }
     }
 }
@@ -262,7 +280,7 @@ pub trait Resolver: Send + Sync {
 }
 
 pub struct FileContext {
-    pub tree: tree_sitter::Tree,
+    pub tree: Option<tree_sitter::Tree>,
     pub source: Vec<u8>,
     pub path: PathBuf,
     pub language: Language,
@@ -324,6 +342,15 @@ pub struct Config {
     pub indexing: IndexingConfig,
     #[serde(default)]
     pub search: SearchConfig,
+    #[serde(default)]
+    pub assets: AssetsConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct AssetsConfig {
+    #[serde(default)]
+    pub plugin_command: Option<String>,
 }
 
 const fn default_version() -> u32 {
@@ -547,6 +574,7 @@ impl Default for Config {
             git: GitConfig::default(),
             indexing: IndexingConfig::default(),
             search: SearchConfig::default(),
+            assets: AssetsConfig::default(),
         }
     }
 }

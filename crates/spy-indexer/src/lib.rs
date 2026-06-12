@@ -292,10 +292,122 @@ impl Indexer {
         source: Vec<u8>,
         lang: Language,
     ) -> Result<Vec<spy_core::Node>> {
-        let ctx = spy_parser::parse_file(path, source, lang)?;
+        let ctx = spy_parser::parse_file(path, source.clone(), lang)?;
         let resolver =
             spy_resolvers::get_resolver(lang).context("No resolver available for language")?;
-        resolver.extract_nodes(&ctx)
+        let mut nodes = resolver.extract_nodes(&ctx)?;
+
+        if matches!(
+            lang,
+            Language::Markdown | Language::Text | Language::Image | Language::Video | Language::Pdf | Language::Docx | Language::Svg | Language::Other
+        ) {
+            for node in &mut nodes {
+                if let Ok(Some(desc)) = self.extract_with_plugin(path) {
+                    node.description = Some(desc);
+                } else if let Ok(Some(desc)) = self.extract_with_api(path, &source, lang) {
+                    node.description = Some(desc);
+                }
+            }
+        }
+
+        Ok(nodes)
+    }
+
+    fn extract_with_plugin(&self, path: &Path) -> Result<Option<String>> {
+        if let Some(cmd) = &self.config.assets.plugin_command {
+            let output = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(format!("{} \"$1\"", cmd))
+                .arg("--")
+                .arg(path.as_os_str())
+                .output()?;
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !stdout.is_empty() {
+                    return Ok(Some(stdout));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    fn extract_with_api(&self, path: &Path, source: &[u8], lang: Language) -> Result<Option<String>> {
+        if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
+            let client = reqwest::blocking::Client::new();
+            match lang {
+                Language::Image => {
+                    use base64::Engine;
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(source);
+                    let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).unwrap_or_else(|| "jpeg".to_string());
+                    let mime = match ext.as_str() {
+                        "png" => "image/png",
+                        "webp" => "image/webp",
+                        "gif" => "image/gif",
+                        _ => "image/jpeg",
+                    };
+                    let url = format!("data:{};base64,{}", mime, b64);
+
+                    let model = std::env::var("OPENAI_VISION_MODEL").unwrap_or_else(|_| "gpt-4-vision-preview".to_string());
+
+                    let body = serde_json::json!({
+                        "model": model,
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": "Describe this image in detail, extracting any text or important features. Format the output as markdown text."},
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": url
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                        "max_tokens": 1000
+                    });
+
+                    let res = client
+                        .post("https://api.openai.com/v1/chat/completions")
+                        .header("Authorization", format!("Bearer {}", api_key))
+                        .json(&body)
+                        .send()?;
+
+                    if res.status().is_success() {
+                        let json: serde_json::Value = res.json()?;
+                        if let Some(desc) = json["choices"][0]["message"]["content"].as_str() {
+                            return Ok(Some(desc.to_string()));
+                        }
+                    }
+                }
+                Language::Video => {
+                    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("video.mp4").to_string();
+                    let part = reqwest::blocking::multipart::Part::bytes(source.to_vec())
+                        .file_name(file_name);
+                    let model = std::env::var("OPENAI_AUDIO_MODEL").unwrap_or_else(|_| "whisper-1".to_string());
+
+                    let form = reqwest::blocking::multipart::Form::new()
+                        .part("file", part)
+                        .text("model", model);
+
+                    let res = client
+                        .post("https://api.openai.com/v1/audio/transcriptions")
+                        .header("Authorization", format!("Bearer {}", api_key))
+                        .multipart(form)
+                        .send()?;
+
+                    if res.status().is_success() {
+                        let json: serde_json::Value = res.json()?;
+                        if let Some(text) = json["text"].as_str() {
+                            return Ok(Some(text.to_string()));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(None)
     }
 
     fn extract_edges(
@@ -478,13 +590,21 @@ impl Indexer {
 pub fn detect_language(path: &Path) -> Option<Language> {
     path.extension()
         .and_then(|ext| ext.to_str())
-        .and_then(|ext| match ext {
+        .map(|ext| ext.to_lowercase())
+        .and_then(|ext| match ext.as_str() {
             "rs" => Some(Language::Rust),
             "py" => Some(Language::Python),
             "ts" | "tsx" => Some(Language::TypeScript),
             "js" | "jsx" | "mjs" | "cjs" => Some(Language::JavaScript),
             "go" => Some(Language::Go),
             "java" => Some(Language::Java),
+            "md" | "markdown" => Some(Language::Markdown),
+            "txt" | "csv" | "log" => Some(Language::Text),
+            "png" | "jpg" | "jpeg" | "webp" => Some(Language::Image),
+            "pdf" => Some(Language::Pdf),
+            "doc" | "docx" => Some(Language::Docx),
+            "mp4" | "mkv" | "webm" | "mp3" => Some(Language::Video),
+            "svg" => Some(Language::Svg),
             _ => None,
         })
 }

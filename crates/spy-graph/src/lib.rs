@@ -576,6 +576,7 @@ impl QueryRoot {
                     spy_core::NodeKind::Class => NodeKindGQL::Class,
                     spy_core::NodeKind::Constant => NodeKindGQL::Constant,
                     spy_core::NodeKind::Dependency => NodeKindGQL::Dependency,
+                    spy_core::NodeKind::Asset => NodeKindGQL::Asset,
                 };
                 kind_set.contains(&gql_kind)
             });
@@ -648,6 +649,8 @@ fn matches_kind(node_kind: &NodeKind, gql_kind: &NodeKindGQL) -> bool {
         (NodeKind::Function, NodeKindGQL::Function)
             | (NodeKind::Class, NodeKindGQL::Class)
             | (NodeKind::Constant, NodeKindGQL::Constant)
+            | (NodeKind::Dependency, NodeKindGQL::Dependency)
+            | (NodeKind::Asset, NodeKindGQL::Asset)
     )
 }
 
@@ -662,6 +665,8 @@ pub enum NodeKindGQL {
     Constant,
     #[graphql(name = "DEPENDENCY")]
     Dependency,
+    #[graphql(name = "ASSET")]
+    Asset,
 }
 
 #[derive(async_graphql::Enum, Copy, Clone, Eq, PartialEq, Hash)]
@@ -672,6 +677,14 @@ pub enum LanguageGQL {
     JavaScript,
     Go,
     Java,
+    Markdown,
+    Text,
+    Image,
+    Pdf,
+    Docx,
+    Video,
+    Svg,
+    Other,
 }
 
 impl From<spy_core::Language> for LanguageGQL {
@@ -683,6 +696,14 @@ impl From<spy_core::Language> for LanguageGQL {
             spy_core::Language::JavaScript => LanguageGQL::JavaScript,
             spy_core::Language::Go => LanguageGQL::Go,
             spy_core::Language::Java => LanguageGQL::Java,
+            spy_core::Language::Markdown => LanguageGQL::Markdown,
+            spy_core::Language::Text => LanguageGQL::Text,
+            spy_core::Language::Image => LanguageGQL::Image,
+            spy_core::Language::Pdf => LanguageGQL::Pdf,
+            spy_core::Language::Docx => LanguageGQL::Docx,
+            spy_core::Language::Video => LanguageGQL::Video,
+            spy_core::Language::Svg => LanguageGQL::Svg,
+            spy_core::Language::Other => LanguageGQL::Other,
         }
     }
 }
@@ -946,6 +967,7 @@ impl From<spy_core::Node> for Node {
             NodeKind::Class => NodeKindGQL::Class,
             NodeKind::Constant => NodeKindGQL::Constant,
             NodeKind::Dependency => NodeKindGQL::Dependency,
+            NodeKind::Asset => NodeKindGQL::Asset,
         };
 
         Node {
