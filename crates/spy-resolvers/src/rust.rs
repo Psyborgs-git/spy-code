@@ -30,7 +30,7 @@ impl Resolver for RustResolver {
 
     fn extract_edges(&self, ctx: &FileContext, scope: &ProjectScope) -> Result<Vec<Edge>> {
         let mut edges = Vec::new();
-        let root = ctx.tree.as_ref().unwrap().root_node();
+        let root = ctx.tree.as_ref().ok_or_else(|| anyhow::anyhow!("Tree is missing in FileContext"))?.root_node();
 
         walk_for_edges(&root, &ctx.source, ctx, scope, &mut edges)?;
 
