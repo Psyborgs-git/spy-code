@@ -3,370 +3,173 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spy-Code Graph Visualization</title>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <title>Spy-Code Unified Graph Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
     <style>
-        * {
-            box-sizing: border-box;
-        }
         body {
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background: #0f0f1a;
             color: #e0e0e0;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
             overflow: hidden;
         }
-        #graph-container {
-            width: 100vw;
-            height: 100vh;
-            position: relative;
+
+        header {
+            background: rgba(15, 15, 26, 0.95);
+            padding: 15px 20px;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid #2a2a4a;
+            z-index: 10;
         }
-        canvas {
-            display: block;
-        }
-        .controls {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            z-index: 1000;
-            background: rgba(15, 15, 26, 0.98);
-            padding: 20px;
-            border-radius: 12px;
-            border: 1px solid #2a2a4a;
-            max-width: 300px;
-            max-height: 90vh;
-            overflow-y: auto;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(10px);
-        }
-        .controls h3 {
-            margin: 0 0 16px 0;
+
+        h1 {
+            margin: 0;
+            font-size: 18px;
             color: #7eb8ff;
-            font-size: 14px;
             font-weight: 600;
-            letter-spacing: -0.5px;
+            margin-right: 20px;
         }
-        .control-group {
-            margin-bottom: 16px;
+
+        .search-container {
+            display: flex;
+            flex: 1;
+            max-width: 600px;
+            gap: 10px;
         }
-        .control-group:last-child {
-            margin-bottom: 0;
-        }
-        .control-group label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 11px;
-            color: #888;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .control-group input,
-        .control-group select {
-            width: 100%;
-            padding: 10px 12px;
+
+        input {
+            flex: 1;
+            padding: 10px;
             background: #1a1a2e;
             border: 1px solid #3a3a5a;
             border-radius: 6px;
             color: #e0e0e0;
-            font-size: 13px;
-            transition: all 0.2s ease;
+            font-size: 14px;
         }
-        .control-group input:focus,
-        .control-group select:focus {
+
+        input:focus {
             outline: none;
             border-color: #7eb8ff;
-            box-shadow: 0 0 0 3px rgba(126, 184, 255, 0.1);
+            box-shadow: 0 0 0 2px rgba(126, 184, 255, 0.2);
         }
-        .control-group button {
-            width: 100%;
-            padding: 12px;
+
+        button {
+            padding: 10px 16px;
             background: linear-gradient(135deg, #7eb8ff 0%, #5a9eff 100%);
             border: none;
             border-radius: 6px;
             color: white;
             cursor: pointer;
             font-weight: 600;
-            font-size: 13px;
+            font-size: 14px;
             transition: all 0.2s ease;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(126, 184, 255, 0.3);
         }
-        .control-group button:hover:not(:disabled) {
-            transform: translateY(-1px);
-            box-shadow: 0 6px 16px rgba(126, 184, 255, 0.4);
-        }
-        .control-group button:active:not(:disabled) {
-            transform: translateY(0);
-        }
-        .control-group button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .status {
-            margin-top: 12px;
-            padding: 10px 12px;
-            background: #1a1a2e;
-            border-radius: 6px;
-            font-size: 12px;
-            border-left: 3px solid #7eb8ff;
-        }
-        .status.error {
-            background: #2a1a1a;
-            border-left-color: #ff6b6b;
-            color: #ff6b6b;
-        }
-        .status.success {
-            background: #1a2a1a;
-            border-left-color: #6bff6b;
-            color: #6bff6b;
-        }
-        .node-details {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-            background: rgba(15, 15, 26, 0.98);
-            padding: 20px;
-            border-radius: 12px;
-            border: 1px solid #2a2a4a;
-            max-width: 380px;
-            max-height: 85vh;
-            overflow-y: auto;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(10px);
-        }
-        .node-details h3 {
-            margin: 0 0 16px 0;
-            color: #7eb8ff;
-            font-size: 14px;
-            font-weight: 600;
-            letter-spacing: -0.5px;
-        }
-        .node-details p {
-            margin: 0 0 12px 0;
-            font-size: 13px;
-            line-height: 1.5;
-        }
-        .node-details .label {
-            color: #888;
-            font-size: 11px;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            display: block;
-            margin-bottom: 4px;
-        }
-        .node-details .value {
-            color: #e0e0e0;
-            word-break: break-word;
-        }
-        .node-details button {
+
+        #cy {
+            flex: 1;
             width: 100%;
-            padding: 10px;
-            background: #2a2a4a;
-            border: 1px solid #3a3a5a;
-            border-radius: 6px;
-            color: #e0e0e0;
-            cursor: pointer;
-            font-weight: 500;
-            font-size: 13px;
-            transition: all 0.2s ease;
+            position: relative;
         }
-        .node-details button:hover {
-            background: #3a3a5a;
-            border-color: #4a4a6a;
-        }
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(15, 15, 26, 0.9);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 2000;
-            backdrop-filter: blur(4px);
-        }
-        .loading-spinner {
-            width: 48px;
-            height: 48px;
-            border: 3px solid #2a2a4a;
-            border-top-color: #7eb8ff;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .tooltip {
-            position: fixed;
-            background: rgba(15, 15, 26, 0.98);
-            border: 1px solid #2a2a4a;
-            border-radius: 8px;
-            padding: 12px;
-            font-size: 12px;
-            pointer-events: none;
-            z-index: 3000;
-            max-width: 300px;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(10px);
-        }
-        .tooltip .label {
-            color: #888;
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 2px;
-        }
-        .tooltip .value {
-            color: #e0e0e0;
-        }
-        .zoom-controls {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .zoom-controls button {
-            width: 40px;
-            height: 40px;
-            background: rgba(15, 15, 26, 0.98);
-            border: 1px solid #2a2a4a;
-            border-radius: 8px;
-            color: #7eb8ff;
-            cursor: pointer;
-            font-size: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-        }
-        .zoom-controls button:hover {
-            background: #2a2a4a;
-            border-color: #7eb8ff;
-        }
+
         .legend {
-            position: fixed;
+            position: absolute;
             bottom: 20px;
             left: 20px;
-            z-index: 1000;
-            background: rgba(15, 15, 26, 0.98);
-            padding: 12px;
+            background: rgba(15, 15, 26, 0.9);
+            padding: 15px;
             border-radius: 8px;
             border: 1px solid #2a2a4a;
-            font-size: 11px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(10px);
+            z-index: 10;
+            font-size: 12px;
         }
+
         .legend-item {
             display: flex;
             align-items: center;
-            margin-bottom: 6px;
+            margin-bottom: 8px;
         }
         .legend-item:last-child {
             margin-bottom: 0;
         }
         .legend-color {
-            width: 12px;
-            height: 12px;
+            width: 14px;
+            height: 14px;
             border-radius: 50%;
-            margin-right: 8px;
+            margin-right: 10px;
         }
-        .help-text {
-            margin-top: 12px;
-            font-size: 11px;
-            color: #666;
-            line-height: 1.4;
+
+        .controls {
+            position: absolute;
+            top: 80px;
+            right: 20px;
+            background: rgba(15, 15, 26, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #2a2a4a;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .controls label {
+            font-size: 12px;
+            color: #888;
+        }
+
+        .controls select {
+            padding: 8px;
+            background: #1a1a2e;
+            border: 1px solid #3a3a5a;
+            border-radius: 4px;
+            color: #e0e0e0;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #7eb8ff;
+            font-size: 18px;
+            font-weight: bold;
+            display: none;
+            z-index: 20;
         }
     </style>
 </head>
 <body>
-    <div id="graph-container">
-        <canvas id="graph-canvas"></canvas>
-    </div>
+    <header>
+        <h1>Spy-Code</h1>
+        <div class="search-container">
+            <input type="text" id="search-input" placeholder="Search nodes or ask a semantic question...">
+            <button id="search-btn">Basic Search</button>
+            <button id="semantic-search-btn">Semantic Search</button>
+        </div>
+    </header>
 
     <div class="controls">
-        <h3>🔍 Spy-Code Graph</h3>
-        <div class="control-group">
-            <label>Layout</label>
-            <select id="layout-select">
-                <option value="force">Force-Directed</option>
-                <option value="hierarchical">Hierarchical</option>
-                <option value="circular">Circular</option>
-                <option value="grid">Grid</option>
-            </select>
-        </div>
-        <div class="control-group">
-            <label>File Path Filter</label>
-            <input type="text" id="file-filter" placeholder="e.g., src/lib.rs">
-        </div>
-        <div class="control-group">
-            <label>Node Kind</label>
-            <select id="node-kind-select">
-                <option value="function">Functions</option>
-                <option value="class">Classes</option>
-                <option value="constant">Constants</option>
-                <option value="all">All</option>
-            </select>
-        </div>
-        <div class="control-group">
-            <label>Edge Kind</label>
-            <select id="edge-kind-select">
-                <option value="calls">Calls</option>
-                <option value="imports">Imports</option>
-                <option value="references">References</option>
-                <option value="all">All</option>
-            </select>
-        </div>
-        <div class="control-group">
-            <label>Initial Nodes</label>
-            <select id="max-nodes-select">
-                <option value="50">50 nodes</option>
-                <option value="100">100 nodes</option>
-                <option value="200">200 nodes</option>
-                <option value="500">500 nodes</option>
-            </select>
-        </div>
-        <div class="control-group">
-            <label>Search</label>
-            <input type="text" id="search-input" placeholder="Search nodes...">
-        </div>
-        <div class="control-group">
-            <button id="reload-btn">Reload Graph</button>
-        </div>
-        <div class="control-group">
-            <button id="export-btn">Export PNG</button>
-        </div>
-        <div id="status" class="status"></div>
-        <div class="help-text">
-            💡 Scroll to zoom<br/>
-            💡 Drag to pan<br/>
-            💡 Click node to select<br/>
-            💡 Double-click to expand<br/>
-            💡 Drag node to reposition
-        </div>
+        <label>Cluster By:</label>
+        <select id="cluster-select">
+            <option value="none">None (Cose Layout)</option>
+            <option value="folder">Folder Structure (Concentric)</option>
+            <option value="kind">Node Kind (Grid)</option>
+        </select>
+        <button id="reload-graph-btn">Reload Full Graph</button>
     </div>
 
-    <div id="node-details" class="node-details" style="display: none;">
-        <h3>📦 Node Details</h3>
-        <div id="node-details-content"></div>
-        <button id="close-details">Close</button>
-    </div>
-
-    <div id="tooltip" class="tooltip" style="display: none;"></div>
-
-    <div class="zoom-controls">
-        <button id="zoom-in">+</button>
-        <button id="zoom-out">−</button>
-        <button id="zoom-fit">⌖</button>
-    </div>
+    <div id="cy"></div>
+    <div id="loading" class="loading">Loading...</div>
 
     <div class="legend">
         <div class="legend-item">
@@ -383,771 +186,220 @@
         </div>
         <div class="legend-item">
             <div class="legend-color" style="background: #ffd93d;"></div>
-            <span>Dependency</span>
+            <span>Dependency / Other</span>
         </div>
     </div>
 
-    <div id="loading" class="loading-overlay" style="display: none;">
-        <div class="loading-spinner"></div>
-    </div>
-
     <script>
-        // Graph Visualization with D3.js + Canvas
-        const canvas = document.getElementById('graph-canvas');
-        const ctx = canvas.getContext('2d');
-        const container = document.getElementById('graph-container');
+        let cy;
+        const cyContainer = document.getElementById('cy');
+        const loadingEl = document.getElementById('loading');
 
-        // State
-        let nodes = [];
-        let edges = [];
-        let simulation = null;
-        let transform = { x: 0, y: 0, k: 1 };
-        let selectedNode = null;
-        let hoveredNode = null;
-        let loadedNodeIds = new Set();
-        let expandedNodes = new Set();
-        let isLoading = false;
-
-        // Configuration
-        const config = {
-            nodeRadius: 8,
-            nodeStrokeWidth: 2,
-            edgeWidth: 1.5,
-            fontSize: 11,
-            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-            colors: {
-                function: '#7eb8ff',
-                class: '#ff6b6b',
-                constant: '#6bff6b',
-                dependency: '#ffd93d',
-                default: '#666',
-                edge: '#4a4a6a',
-                edgeCalls: '#7eb8ff',
-                edgeImports: '#6bff6b',
-                edgeReferences: '#ff6b6b',
-                background: '#0f0f1a'
-            }
-        };
-
-        // Resize canvas
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            render();
-        }
-
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
-
-        // Transform utilities
-        function screenToWorld(x, y) {
-            return {
-                x: (x - transform.x) / transform.k,
-                y: (y - transform.y) / transform.k
-            };
-        }
-
-        function worldToScreen(x, y) {
-            return {
-                x: x * transform.k + transform.x,
-                y: y * transform.k + transform.y
-            };
-        }
-
-        // Quadtree for spatial queries
-        let quadtree = null;
-
-        function buildQuadtree() {
-            if (nodes.length === 0) return;
-            quadtree = d3.quadtree()
-                .x(d => d.x)
-                .y(d => d.y)
-                .addAll(nodes);
-        }
-
-        // Find node at position
-        function findNodeAt(x, y) {
-            if (!quadtree) return null;
-            const worldPos = screenToWorld(x, y);
-            const radius = config.nodeRadius / transform.k + 5;
-
-            let found = null;
-            quadtree.visit((node, x0, y0, x1, y1) => {
-                if (!found) {
-                    const d = Math.hypot(node.data.x - worldPos.x, node.data.y - worldPos.y);
-                    if (d < radius) {
-                        found = node.data;
-                    }
-                }
-                return !found && x0 > worldPos.x + radius || x1 < worldPos.x - radius ||
-                       y0 > worldPos.y + radius || y1 < worldPos.y - radius;
-            });
-            return found;
-        }
-
-        // Render function
-        function render() {
-            ctx.fillStyle = config.colors.background;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            ctx.save();
-            ctx.translate(transform.x, transform.y);
-            ctx.scale(transform.k, transform.k);
-
-            // Draw edges
-            edges.forEach(edge => {
-                const source = nodes.find(n => n.id === edge.fromId);
-                const target = nodes.find(n => n.id === edge.toId);
-                if (!source || !target) return;
-
-                ctx.beginPath();
-                ctx.moveTo(source.x, source.y);
-
-                // Curved bezier for mind-map style
-                const midX = (source.x + target.x) / 2;
-                const midY = (source.y + target.y) / 2;
-                const dx = target.x - source.x;
-                const dy = target.y - source.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                const offset = Math.min(dist * 0.2, 50);
-
-                ctx.quadraticCurveTo(
-                    midX - dy * 0.1,
-                    midY + dx * 0.1,
-                    target.x,
-                    target.y
-                );
-
-                // Color by edge type
-                let strokeColor = config.colors.edge;
-                if (edge.kind === 'CALLS') strokeColor = config.colors.edgeCalls;
-                else if (edge.kind === 'IMPORTS') strokeColor = config.colors.edgeImports;
-                else if (edge.kind === 'REFERENCES') strokeColor = config.colors.edgeReferences;
-
-                ctx.strokeStyle = strokeColor;
-                ctx.lineWidth = config.edgeWidth / transform.k;
-                ctx.stroke();
-
-                // Arrow
-                const angle = Math.atan2(target.y - source.y, target.x - source.x);
-                const arrowSize = 6 / transform.k;
-                const arrowX = target.x - Math.cos(angle) * (config.nodeRadius + arrowSize);
-                const arrowY = target.y - Math.sin(angle) * (config.nodeRadius + arrowSize);
-
-                ctx.beginPath();
-                ctx.moveTo(arrowX, arrowY);
-                ctx.lineTo(
-                    arrowX - arrowSize * Math.cos(angle - Math.PI / 6),
-                    arrowY - arrowSize * Math.sin(angle - Math.PI / 6)
-                );
-                ctx.lineTo(
-                    arrowX - arrowSize * Math.cos(angle + Math.PI / 6),
-                    arrowY - arrowSize * Math.sin(angle + Math.PI / 6)
-                );
-                ctx.closePath();
-                ctx.fillStyle = strokeColor;
-                ctx.fill();
-            });
-
-            // Draw nodes
-            nodes.forEach(node => {
-                const isSelected = selectedNode && selectedNode.id === node.id;
-                const isHovered = hoveredNode && hoveredNode.id === node.id;
-                const isExpanded = expandedNodes.has(node.id);
-
-                // Node color by kind
-                let fillColor = config.colors.default;
-                if (node.kind === 'FUNCTION') fillColor = config.colors.function;
-                else if (node.kind === 'CLASS') fillColor = config.colors.class;
-                else if (node.kind === 'CONSTANT') fillColor = config.colors.constant;
-                else if (node.kind === 'DEPENDENCY') fillColor = config.colors.dependency;
-
-                // Draw node
-                ctx.beginPath();
-                const radius = config.nodeRadius * (isSelected ? 1.3 : isHovered ? 1.2 : 1);
-                ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
-                ctx.fillStyle = fillColor;
-                ctx.fill();
-
-                // Stroke
-                ctx.strokeStyle = isSelected ? '#fff' : isExpanded ? '#ffd93d' : '#3a3a5a';
-                ctx.lineWidth = config.nodeStrokeWidth / transform.k;
-                ctx.stroke();
-
-                // Label (only when zoomed in enough)
-                if (transform.k > 0.5) {
-                    ctx.fillStyle = '#e0e0e0';
-                    ctx.font = `${config.fontSize / transform.k}px ${config.fontFamily}`;
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'top';
-                    const labelY = node.y + radius + 4 / transform.k;
-                    ctx.fillText(node.name, node.x, labelY);
-                }
-            });
-
-            ctx.restore();
-        }
-
-        // Animation loop
-        function animate() {
-            if (simulation) {
-                simulation.tick();
-            }
-            render();
-            requestAnimationFrame(animate);
-        }
-
-        // Initialize force simulation
-        function initSimulation() {
-            if (simulation) {
-                simulation.stop();
-            }
-
-            simulation = d3.forceSimulation(nodes)
-                .force('link', d3.forceLink(edges)
-                    .id(d => d.id)
-                    .distance(100)
-                    .strength(0.5))
-                .force('charge', d3.forceManyBody().strength(-300))
-                .force('center', d3.forceCenter(canvas.width / 2, canvas.height / 2))
-                .force('collide', d3.forceCollide().radius(config.nodeRadius * 2))
-                .on('tick', () => {
-                    buildQuadtree();
-                });
-        }
-
-        // Alternative layouts
-        function applyHierarchicalLayout() {
-            if (simulation) simulation.stop();
-
-            const nodeMap = new Map(nodes.map(n => [n.id, n]));
-            const adjacency = new Map();
-            const incomingCount = new Map();
-
-            edges.forEach(edge => {
-                if (!adjacency.has(edge.fromId)) {
-                    adjacency.set(edge.fromId, []);
-                }
-                adjacency.get(edge.fromId).push(edge.toId);
-                incomingCount.set(edge.toId, (incomingCount.get(edge.toId) || 0) + 1);
-            });
-
-            const roots = nodes.filter(n => !incomingCount.has(n.id));
-            if (roots.length === 0) return applyGridLayout();
-
-            const positions = new Map();
-            let currentY = 100;
-            const levelHeight = 120;
-            const nodeWidth = 150;
-            const nodeSpacing = 30;
-
-            const layoutLevel = (nodeIds, level, startX) => {
-                let currentX = startX;
-                nodeIds.forEach(nodeId => {
-                    const node = nodeMap.get(nodeId);
-                    if (node) {
-                        positions.set(nodeId, { x: currentX, y: currentY + level * levelHeight });
-                        currentX += nodeWidth + nodeSpacing;
-
-                        if (adjacency.has(nodeId)) {
-                            layoutLevel(adjacency.get(nodeId), level + 1, startX);
+        function initCytoscape() {
+            cy = cytoscape({
+                container: cyContainer,
+                style: [
+                    {
+                        selector: 'node',
+                        style: {
+                            'label': 'data(name)',
+                            'background-color': '#7eb8ff',
+                            'color': '#fff',
+                            'text-valign': 'bottom',
+                            'text-margin-y': 5,
+                            'font-size': '10px',
+                            'width': 20,
+                            'height': 20,
+                            'border-width': 2,
+                            'border-color': '#2a2a4a'
+                        }
+                    },
+                    {
+                        selector: 'node[kind="CLASS"]',
+                        style: { 'background-color': '#ff6b6b' }
+                    },
+                    {
+                        selector: 'node[kind="CONSTANT"]',
+                        style: { 'background-color': '#6bff6b' }
+                    },
+                    {
+                        selector: 'edge',
+                        style: {
+                            'width': 1.5,
+                            'line-color': '#4a4a6a',
+                            'target-arrow-color': '#4a4a6a',
+                            'target-arrow-shape': 'triangle',
+                            'curve-style': 'bezier',
+                            'opacity': 0.6
+                        }
+                    },
+                    {
+                        selector: ':selected',
+                        style: {
+                            'border-color': '#fff',
+                            'border-width': 3,
+                            'width': 25,
+                            'height': 25
                         }
                     }
-                });
-            };
-
-            layoutLevel(roots.map(n => n.id), 0, 100);
-
-            nodes.forEach(node => {
-                const pos = positions.get(node.id);
-                if (pos) {
-                    node.x = pos.x;
-                    node.y = pos.y;
-                }
+                ],
+                layout: { name: 'cose' }
             });
 
-            buildQuadtree();
-            render();
-        }
-
-        function applyCircularLayout() {
-            if (simulation) simulation.stop();
-
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-            const radius = Math.min(canvas.width, canvas.height) * 0.35;
-
-            nodes.forEach((node, i) => {
-                const angle = (i / nodes.length) * 2 * Math.PI;
-                node.x = centerX + radius * Math.cos(angle);
-                node.y = centerY + radius * Math.sin(angle);
+            cy.on('tap', 'node', function(evt){
+                const node = evt.target;
+                console.log('Tapped node:', node.data());
+                // In a real integration, this might open details or file
             });
-
-            buildQuadtree();
-            render();
         }
 
-        function applyGridLayout() {
-            if (simulation) simulation.stop();
-
-            const cols = Math.ceil(Math.sqrt(nodes.length));
-            const spacing = 150;
-            const startX = (canvas.width - cols * spacing) / 2;
-            const startY = (canvas.height - Math.ceil(nodes.length / cols) * spacing) / 2;
-
-            nodes.forEach((node, i) => {
-                const col = i % cols;
-                const row = Math.floor(i / cols);
-                node.x = startX + col * spacing;
-                node.y = startY + row * spacing;
-            });
-
-            buildQuadtree();
-            render();
-        }
-
-        // Load data from GraphQL
-        async function loadGraphData() {
-            const filePath = document.getElementById('file-filter').value;
-            const nodeKind = document.getElementById('node-kind-select').value;
-            const edgeKind = document.getElementById('edge-kind-select').value;
-            const maxNodes = parseInt(document.getElementById('max-nodes-select').value);
-
-            showLoading(true);
-            setStatus('Loading graph data...', '');
-
+        async function fetchGraphData(query) {
+            loadingEl.style.display = 'block';
             try {
-                const query = `
-                    query {
-                        graphData(filter: {
-                            ${filePath ? `filePath: "${filePath}"` : ''}
-                            ${nodeKind !== 'all' ? `nodeKinds: [${nodeKind.toUpperCase()}]` : ''}
-                            ${edgeKind !== 'all' ? `edgeKinds: [${edgeKind.toUpperCase()}]` : ''}
-                        }) {
-                            nodes {
-                                id
-                                kind
-                                name
-                                filePath
-                                startLine
-                                description
-                            }
-                            edges {
-                                fromId
-                                toId
-                                kind
-                                confidence
-                            }
-                        }
-                    }
-                `;
-
                 const response = await fetch('/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query })
                 });
-
                 const result = await response.json();
-
-                if (result.errors) {
-                    throw new Error(result.errors[0].message);
-                }
-
-                const graphData = result.data.graphData;
-
-                // Limit initial nodes
-                const limitedNodes = graphData.nodes.slice(0, maxNodes);
-                const limitedNodeIds = new Set(limitedNodes.map(n => n.id));
-
-                // Include all edges connected to loaded nodes (even if endpoint not loaded)
-                const connectedEdges = graphData.edges.filter(
-                    edge => limitedNodeIds.has(edge.fromId) || limitedNodeIds.has(edge.toId)
-                );
-
-                // Collect all node IDs referenced by edges
-                const referencedNodeIds = new Set();
-                connectedEdges.forEach(edge => {
-                    referencedNodeIds.add(edge.fromId);
-                    referencedNodeIds.add(edge.toId);
-                });
-
-                // Get all nodes that are either in initial batch or referenced by edges
-                const allNodeIds = new Set([...limitedNodeIds, ...referencedNodeIds]);
-                const allNodes = graphData.nodes.filter(n => allNodeIds.has(n.id));
-
-                // Filter edges to only include those where both endpoints exist
-                const validEdges = connectedEdges.filter(
-                    edge => allNodeIds.has(edge.fromId) && allNodeIds.has(edge.toId)
-                );
-
-                // Convert to D3 format
-                nodes = allNodes.map(n => ({
-                    id: n.id,
-                    kind: n.kind,
-                    name: n.name,
-                    filePath: n.filePath,
-                    startLine: n.startLine,
-                    description: n.description,
-                    x: Math.random() * canvas.width,
-                    y: Math.random() * canvas.height
-                }));
-
-                edges = validEdges.map(e => ({
-                    fromId: e.fromId,
-                    toId: e.toId,
-                    kind: e.kind,
-                    confidence: e.confidence
-                }));
-
-                loadedNodeIds = allNodeIds;
-                expandedNodes.clear();
-                selectedNode = null;
-
-                // Apply selected layout
-                const layout = document.getElementById('layout-select').value;
-                switch (layout) {
-                    case 'hierarchical':
-                        applyHierarchicalLayout();
-                        break;
-                    case 'circular':
-                        applyCircularLayout();
-                        break;
-                    case 'grid':
-                        applyGridLayout();
-                        break;
-                    default:
-                        initSimulation();
-                }
-
-                setStatus(`Loaded ${nodes.length} nodes, ${edges.length} edges`, 'success');
+                if (result.errors) throw new Error(result.errors[0].message);
+                return result.data;
             } catch (error) {
-                setStatus(`Error: ${error.message}`, 'error');
+                console.error("Error fetching data:", error);
+                alert("Error fetching data: " + error.message);
+                return null;
             } finally {
-                showLoading(false);
+                loadingEl.style.display = 'none';
             }
         }
 
-        // Load node neighbors
-        async function loadNodeNeighbors(nodeId) {
-            try {
-                const query = `
-                    query {
-                        node(id: "${nodeId}") {
-                            id
-                            kind
-                            name
-                            filePath
-                            startLine
-                            description
-                            callers {
-                                id
-                                kind
-                                name
-                                filePath
-                                startLine
-                            }
-                            callees {
-                                id
-                                kind
-                                name
-                                filePath
-                                startLine
-                            }
+        async function loadFullGraph() {
+            const query = \`
+                query {
+                    graphData {
+                        nodes { id kind name filePath startLine }
+                        edges { fromId toId kind }
+                    }
+                }
+            \`;
+            const data = await fetchGraphData(query);
+            if (data && data.graphData) {
+                renderGraph(data.graphData.nodes, data.graphData.edges);
+            }
+        }
+
+        function renderGraph(nodes, edges) {
+            const elements = [];
+
+            nodes.forEach(n => {
+                // Determine folder for clustering
+                const parts = n.filePath.split('/');
+                const folder = parts.length > 1 ? parts.slice(0, -1).join('/') : 'root';
+
+                elements.push({
+                    data: {
+                        id: n.id,
+                        name: n.name,
+                        kind: n.kind,
+                        filePath: n.filePath,
+                        folder: folder
+                    }
+                });
+            });
+
+            edges.forEach(e => {
+                elements.push({
+                    data: {
+                        source: e.fromId,
+                        target: e.toId,
+                        kind: e.kind
+                    }
+                });
+            });
+
+            cy.elements().remove();
+            cy.add(elements);
+            applyLayout();
+        }
+
+        function applyLayout() {
+            const layoutType = document.getElementById('cluster-select').value;
+            let layoutConfig = { name: 'cose', padding: 30, nodeDimensionsIncludeLabels: true };
+
+            if (layoutType === 'folder') {
+                layoutConfig = {
+                    name: 'concentric',
+                    concentric: function(node) {
+                        // cluster by folder logic
+                        // Using char code sum as a simple numerical value for concentric circles
+                        let sum = 0;
+                        const folder = node.data('folder');
+                        for(let i=0; i<folder.length; i++) {
+                            sum += folder.charCodeAt(i);
                         }
-                    }
-                `;
-
-                const response = await fetch('/', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query })
-                });
-
-                const result = await response.json();
-
-                if (result.errors) {
-                    throw new Error(result.errors[0].message);
-                }
-
-                const nodeData = result.data.node;
-                const currentNode = nodes.find(n => n.id === nodeId);
-                const currentPos = currentNode ? { x: currentNode.x, y: currentNode.y } : { x: canvas.width / 2, y: canvas.height / 2 };
-
-                const newNodes = [];
-                const newEdges = [];
-
-                // Add callers
-                const callers = nodeData.callers || [];
-                callers.forEach((caller, index) => {
-                    if (!loadedNodeIds.has(caller.id)) {
-                        const angle = (index / callers.length) * Math.PI * 2;
-                        const radius = 200;
-                        newNodes.push({
-                            id: caller.id,
-                            kind: caller.kind,
-                            name: caller.name,
-                            filePath: caller.filePath,
-                            startLine: caller.startLine,
-                            x: currentPos.x + Math.cos(angle) * radius,
-                            y: currentPos.y + Math.sin(angle) * radius
-                        });
-                        loadedNodeIds.add(caller.id);
-                    }
-                    newEdges.push({
-                        fromId: caller.id,
-                        toId: nodeId,
-                        kind: 'CALLS',
-                        confidence: 1.0
-                    });
-                });
-
-                // Add callees
-                const callees = nodeData.callees || [];
-                callees.forEach((callee, index) => {
-                    if (!loadedNodeIds.has(callee.id)) {
-                        const angle = (index / callees.length) * Math.PI * 2 + Math.PI;
-                        const radius = 200;
-                        newNodes.push({
-                            id: callee.id,
-                            kind: callee.kind,
-                            name: callee.name,
-                            filePath: callee.filePath,
-                            startLine: callee.startLine,
-                            x: currentPos.x + Math.cos(angle) * radius,
-                            y: currentPos.y + Math.sin(angle) * radius
-                        });
-                        loadedNodeIds.add(callee.id);
-                    }
-                    newEdges.push({
-                        fromId: nodeId,
-                        toId: callee.id,
-                        kind: 'CALLS',
-                        confidence: 1.0
-                    });
-                });
-
-                nodes.push(...newNodes);
-                edges.push(...newEdges);
-
-                if (simulation) {
-                    simulation.nodes(nodes);
-                    simulation.force('link').links(edges);
-                    simulation.alpha(1).restart();
-                }
-
-                buildQuadtree();
-            } catch (error) {
-                console.error('Error loading neighbors:', error);
+                        return sum;
+                    },
+                    levelWidth: function(nodes) {
+                        return 100;
+                    },
+                    padding: 30
+                };
+            } else if (layoutType === 'kind') {
+                layoutConfig = {
+                    name: 'grid',
+                    sort: function(a, b) {
+                        return a.data('kind').localeCompare(b.data('kind'));
+                    },
+                    padding: 30
+                };
             }
+
+            cy.layout(layoutConfig).run();
         }
 
-        // UI helpers
-        function showLoading(show) {
-            isLoading = show;
-            document.getElementById('loading').style.display = show ? 'flex' : 'none';
-        }
+        document.getElementById('reload-graph-btn').addEventListener('click', loadFullGraph);
+        document.getElementById('cluster-select').addEventListener('change', applyLayout);
 
-        function setStatus(message, type) {
-            const status = document.getElementById('status');
-            status.textContent = message;
-            status.className = 'status ' + type;
-        }
+        // Basic Search
+        document.getElementById('search-btn').addEventListener('click', () => {
+            const queryText = document.getElementById('search-input').value.toLowerCase();
+            if(!queryText) {
+                loadFullGraph();
+                return;
+            }
 
-        function showNodeDetails(node) {
-            const details = document.getElementById('node-details');
-            const content = document.getElementById('node-details-content');
-
-            content.innerHTML = `
-                <p><span class="label">Name</span><span class="value">${node.name}</span></p>
-                <p><span class="label">Kind</span><span class="value">${node.kind}</span></p>
-                <p><span class="label">File</span><span class="value">${node.filePath}</span></p>
-                <p><span class="label">Line</span><span class="value">${node.startLine}</span></p>
-                ${node.description ? `<p><span class="label">Description</span><span class="value">${node.description}</span></p>` : ''}
-            `;
-
-            details.style.display = 'block';
-        }
-
-        function hideNodeDetails() {
-            document.getElementById('node-details').style.display = 'none';
-        }
-
-        function showTooltip(x, y, node) {
-            const tooltip = document.getElementById('tooltip');
-            tooltip.innerHTML = `
-                <div><span class="label">Name</span><span class="value">${node.name}</span></div>
-                <div><span class="label">Kind</span><span class="value">${node.kind}</span></div>
-                <div><span class="label">File</span><span class="value">${node.filePath}</span></div>
-            `;
-            tooltip.style.left = (x + 15) + 'px';
-            tooltip.style.top = (y + 15) + 'px';
-            tooltip.style.display = 'block';
-        }
-
-        function hideTooltip() {
-            document.getElementById('tooltip').style.display = 'none';
-        }
-
-        // Pan/zoom handling
-        let isDragging = false;
-        let isPanning = false;
-        let lastX, lastY;
-
-        canvas.addEventListener('mousedown', (e) => {
-            const node = findNodeAt(e.clientX, e.clientY);
-            if (node) {
-                isDragging = true;
-                selectedNode = node;
-                showNodeDetails(node);
-
-                // Expand on double-click
-                if (e.detail === 2) {
-                    if (expandedNodes.has(node.id)) {
-                        expandedNodes.delete(node.id);
-                    } else {
-                        expandedNodes.add(node.id);
-                        loadNodeNeighbors(node.id);
-                    }
+            cy.nodes().forEach(node => {
+                if(node.data('name').toLowerCase().includes(queryText) || node.data('filePath').toLowerCase().includes(queryText)) {
+                    node.style('display', 'element');
+                } else {
+                    node.style('display', 'none');
                 }
-            } else {
-                isPanning = true;
-                lastX = e.clientX;
-                lastY = e.clientY;
-            }
-        });
-
-        canvas.addEventListener('mousemove', (e) => {
-            if (isDragging && selectedNode) {
-                const worldPos = screenToWorld(e.clientX, e.clientY);
-                selectedNode.x = worldPos.x;
-                selectedNode.y = worldPos.y;
-                if (simulation) {
-                    simulation.alpha(0.3).restart();
+            });
+            // Also hide edges where one of the nodes is hidden
+            cy.edges().forEach(edge => {
+                if(edge.source().style('display') === 'none' || edge.target().style('display') === 'none') {
+                    edge.style('display', 'none');
+                } else {
+                    edge.style('display', 'element');
                 }
-            } else if (isPanning) {
-                transform.x += e.clientX - lastX;
-                transform.y += e.clientY - lastY;
-                lastX = e.clientX;
-                lastY = e.clientY;
-            } else {
-                const node = findNodeAt(e.clientX, e.clientY);
-                if (node !== hoveredNode) {
-                    hoveredNode = node;
-                    if (node) {
-                        showTooltip(e.clientX, e.clientY, node);
-                    } else {
-                        hideTooltip();
-                    }
-                }
-            }
+            });
+            cy.layout({name: 'cose'}).run();
         });
 
-        canvas.addEventListener('mouseup', () => {
-            isDragging = false;
-            isPanning = false;
+        // Semantic Search Placeholder
+        // A true semantic search would involve hitting an endpoint that uses embeddings to return node IDs, then filtering the graph.
+        document.getElementById('semantic-search-btn').addEventListener('click', async () => {
+             const queryText = document.getElementById('search-input').value;
+             if(!queryText) return;
+
+             alert("Semantic search requires backend embedding integration which would filter node IDs here.");
+             // Pseudo code:
+             // const nodeIds = await fetchSemanticResults(queryText);
+             // cy.nodes().forEach(n => { n.style('display', nodeIds.includes(n.id()) ? 'element' : 'none') });
         });
 
-        canvas.addEventListener('mouseleave', () => {
-            isDragging = false;
-            isPanning = false;
-            hideTooltip();
-        });
-
-        canvas.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-            const newK = Math.max(0.1, Math.min(5, transform.k * zoomFactor));
-
-            // Zoom towards mouse position
-            const mouseX = e.clientX;
-            const mouseY = e.clientY;
-            const worldPos = screenToWorld(mouseX, mouseY);
-
-            transform.k = newK;
-            transform.x = mouseX - worldPos.x * newK;
-            transform.y = mouseY - worldPos.y * newK;
-        });
-
-        // Event listeners
-        document.getElementById('reload-btn').addEventListener('click', loadGraphData);
-        document.getElementById('close-details').addEventListener('click', hideNodeDetails);
-        document.getElementById('layout-select').addEventListener('change', () => {
-            const layout = document.getElementById('layout-select').value;
-            switch (layout) {
-                case 'hierarchical':
-                    applyHierarchicalLayout();
-                    break;
-                case 'circular':
-                    applyCircularLayout();
-                    break;
-                case 'grid':
-                    applyGridLayout();
-                    break;
-                default:
-                    initSimulation();
-            }
-        });
-
-        document.getElementById('zoom-in').addEventListener('click', () => {
-            transform.k = Math.min(5, transform.k * 1.2);
-        });
-
-        document.getElementById('zoom-out').addEventListener('click', () => {
-            transform.k = Math.max(0.1, transform.k / 1.2);
-        });
-
-        document.getElementById('zoom-fit').addEventListener('click', () => {
-            if (nodes.length === 0) return;
-
-            const bounds = {
-                minX: Math.min(...nodes.map(n => n.x)),
-                maxX: Math.max(...nodes.map(n => n.x)),
-                minY: Math.min(...nodes.map(n => n.y)),
-                maxY: Math.max(...nodes.map(n => n.y))
-            };
-
-            const padding = 50;
-            const width = bounds.maxX - bounds.minX + padding * 2;
-            const height = bounds.maxY - bounds.minY + padding * 2;
-
-            const scaleX = canvas.width / width;
-            const scaleY = canvas.height / height;
-            transform.k = Math.min(scaleX, scaleY, 1);
-
-            transform.x = (canvas.width - width * transform.k) / 2 - bounds.minX * transform.k;
-            transform.y = (canvas.height - height * transform.k) / 2 - bounds.minY * transform.k;
-        });
-
-        document.getElementById('search-input').addEventListener('input', (e) => {
-            const query = e.target.value.toLowerCase();
-            if (query.length < 2) return;
-
-            const found = nodes.find(n =>
-                n.name.toLowerCase().includes(query) ||
-                n.filePath.toLowerCase().includes(query)
-            );
-
-            if (found) {
-                selectedNode = found;
-                showNodeDetails(found);
-
-                // Center on node
-                transform.x = canvas.width / 2 - found.x * transform.k;
-                transform.y = canvas.height / 2 - found.y * transform.k;
-            }
-        });
-
-        document.getElementById('export-btn').addEventListener('click', () => {
-            const link = document.createElement('a');
-            link.download = 'spy-code-graph.png';
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-        });
-
-        // Initialize
-        animate();
-        loadGraphData();
+        initCytoscape();
+        loadFullGraph();
     </script>
 </body>
 </html>

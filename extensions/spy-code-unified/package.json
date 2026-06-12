@@ -1,0 +1,85 @@
+{
+  "name": "spy-code-unified",
+  "displayName": "Spy-Code Unified IDE Extension",
+  "description": "Unified Spy-Code extension for anti-gravity, vscode, etc. featuring Interactive Graph, Config Manager and MCP Control.",
+  "version": "1.0.0",
+  "publisher": "psyborgs",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "spy-code.openDashboard",
+        "title": "Spy-Code: Open Dashboard (Graph & Config)",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "spy-code.startMcpServer",
+        "title": "Spy-Code: Start MCP Server"
+      },
+      {
+        "command": "spy-code.stopMcpServer",
+        "title": "Spy-Code: Stop MCP Server"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "spy-code-container",
+          "title": "Spy-Code",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "spy-code-container": [
+        {
+          "type": "webview",
+          "id": "spy-code.sidebar",
+          "name": "Spy-Code Dashboard",
+          "contextualTitle": "Spy-Code Dashboard"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Spy-Code",
+      "properties": {
+        "spy-code.path": {
+          "type": "string",
+          "default": "spy-code",
+          "description": "Path to spy-code CLI binary"
+        },
+        "spy-code.dbPath": {
+          "type": "string",
+          "default": ".spy-code/graph.db",
+          "description": "Path to spy-code database"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "build": "tsc -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@spy-code/integration-core": "file:../../spy-integration-core",
+    "@spy-code/vscode-adapter": "file:../../ide-adapters/vscode-adapter",
+    "eventemitter3": "^5.0.4"
+  }
+}
