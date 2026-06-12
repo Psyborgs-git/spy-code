@@ -18,7 +18,7 @@ impl Resolver for GoResolver {
 
     fn extract_nodes(&self, ctx: &FileContext) -> Result<Vec<Node>> {
         let mut nodes = Vec::new();
-        let root = ctx.tree.as_ref().unwrap().root_node();
+        let root = ctx.tree.as_ref().ok_or_else(|| anyhow::anyhow!("Tree is missing in FileContext"))?.root_node();
 
         let dir = ctx.path.parent().and_then(|p| p.to_str()).unwrap_or(".");
         let file = ctx.path.file_name().and_then(|f| f.to_str()).unwrap_or("_");
