@@ -1004,26 +1004,21 @@ fn cmd_install_skills(dry_run: bool, skip_index: bool, force_config: bool) -> Re
     // Try to find the script in various possible locations
     let possible_paths = vec![
         // npm installation: script is in npm/scripts/ relative to binary
-        exe_path
-            .parent()
+        exe_path.parent()
             .and_then(|p| p.parent())
             .map(|p| p.join("scripts/install-spy-code-skill.sh")),
         // npm global installation: script might be in node_modules/spy-code/scripts/
-        exe_path
-            .parent()
+        exe_path.parent()
             .and_then(|p| p.parent())
             .and_then(|p| p.parent())
             .map(|p| p.join("spy-code/scripts/install-spy-code-skill.sh")),
         // Development build: script is in scripts/ relative to repo root
-        exe_path
-            .parent()
+        exe_path.parent()
             .and_then(|p| p.parent())
             .and_then(|p| p.parent())
             .map(|p| p.join("scripts/install-spy-code-skill.sh")),
         // Current directory (for running from repo root)
-        Some(std::path::PathBuf::from(
-            "scripts/install-spy-code-skill.sh",
-        )),
+        Some(std::path::PathBuf::from("scripts/install-spy-code-skill.sh")),
     ];
 
     let script_path = possible_paths

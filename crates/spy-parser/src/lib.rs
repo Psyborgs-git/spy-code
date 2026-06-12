@@ -7,20 +7,30 @@ pub fn parse_file(path: &Path, source: Vec<u8>, language: Language) -> Result<Fi
     let mut parser = Parser::new();
 
     let ts_lang = match language {
-        Language::Rust => tree_sitter_rust::LANGUAGE.into(),
-        Language::Python => tree_sitter_python::LANGUAGE.into(),
-        Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-        Language::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
-        Language::Go => tree_sitter_go::LANGUAGE.into(),
+        Language::Rust => Some(tree_sitter_rust::LANGUAGE.into()),
+        Language::Python => Some(tree_sitter_python::LANGUAGE.into()),
+        Language::TypeScript => Some(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
+        Language::JavaScript => Some(tree_sitter_javascript::LANGUAGE.into()),
+        Language::Go => Some(tree_sitter_go::LANGUAGE.into()),
+        Language::Java => Some(tree_sitter_java::LANGUAGE.into()),
+        _ => None,
     };
 
-    parser
-        .set_language(&ts_lang)
-        .context("Failed to set parser language")?;
+    let tree = if let Some(lang) = ts_lang {
+        parser
+            .set_language(&lang)
+            .context("Failed to set parser language")?;
 
-    let tree = parser
-        .parse(&source, None)
-        .context("Failed to parse source")?;
+        parser
+            .parse(&source, None)
+            .context("Failed to parse source")?
+    } else {
+        // Return an empty tree for non-code files
+        let mut dummy_parser = Parser::new();
+        // Just create an empty tree (using Javascript grammar as a dummy)
+        dummy_parser.set_language(&tree_sitter_javascript::LANGUAGE.into()).unwrap();
+        dummy_parser.parse("", None).unwrap()
+    };
 
     Ok(FileContext {
         tree,
@@ -79,6 +89,15 @@ mod tests {
         let source = b"package main\nfunc main() {}";
         let ctx = parse_file(Path::new("test.go"), source.to_vec(), Language::Go)?;
         assert_eq!(ctx.language, Language::Go);
+        assert!(ctx.tree.root_node().child_count() > 0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_java() -> Result<()> {
+        let source = b"class Main { public static void main(String[] args) {} }";
+        let ctx = parse_file(Path::new("test.java"), source.to_vec(), Language::Java)?;
+        assert_eq!(ctx.language, Language::Java);
         assert!(ctx.tree.root_node().child_count() > 0);
         Ok(())
     }

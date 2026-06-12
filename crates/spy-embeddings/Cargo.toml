@@ -11,5 +11,5 @@ anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 rusqlite = { workspace = true }
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["blocking", "json"] }
 dirs = { workspace = true }
