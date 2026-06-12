@@ -182,26 +182,25 @@ fn infer_containing_function(
 }
 
 fn extract_preceding_comments(node: &TSNode, source: &[u8]) -> Option<String> {
-    let start_row = node.start_position().row;
-    let parent = node.parent()?;
     let mut comments = Vec::new();
-
-    let mut cursor = parent.walk();
-    for sibling in parent.children(&mut cursor) {
+    let mut current = node.prev_sibling();
+    while let Some(sibling) = current {
         if sibling.kind() == "line_comment" || sibling.kind() == "block_comment" {
-            if sibling.end_position().row <= start_row {
-                let text = node_text(&sibling, source);
-                let stripped = text.trim_start_matches("//").trim_start_matches("/*").trim_end_matches("*/").trim();
-                if !stripped.is_empty() {
-                    comments.push(stripped.to_string());
-                }
+            let text = node_text(&sibling, source);
+            let stripped = text.trim_start_matches("//").trim_start_matches("/*").trim_end_matches("*/").trim();
+            if !stripped.is_empty() {
+                comments.push(stripped.to_string());
             }
+            current = sibling.prev_sibling();
+        } else {
+            break;
         }
     }
 
     if comments.is_empty() {
         None
     } else {
+        comments.reverse();
         Some(comments.join(" "))
     }
 }
