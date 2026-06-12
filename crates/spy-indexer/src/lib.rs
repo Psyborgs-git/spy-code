@@ -338,8 +338,8 @@ impl Indexer {
                 Language::Image => {
                     use base64::Engine;
                     let b64 = base64::engine::general_purpose::STANDARD.encode(source);
-                    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("jpeg");
-                    let mime = match ext {
+                    let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).unwrap_or_else(|| "jpeg".to_string());
+                    let mime = match ext.as_str() {
                         "png" => "image/png",
                         "webp" => "image/webp",
                         "gif" => "image/gif",
