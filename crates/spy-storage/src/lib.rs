@@ -345,6 +345,33 @@ impl Storage {
         Ok(result)
     }
 
+    pub fn delete_edges_for_node(&mut self, node_id: &str) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM edges_calls WHERE from_id = ?1 OR to_id = ?1", params![node_id])?;
+        tx.execute("DELETE FROM edges_imports WHERE from_id = ?1 OR to_id = ?1", params![node_id])?;
+        tx.execute("DELETE FROM edges_references WHERE from_id = ?1 OR to_id = ?1", params![node_id])?;
+        tx.execute("DELETE FROM edges_inherits_from WHERE from_id = ?1 OR to_id = ?1", params![node_id])?;
+        tx.execute("DELETE FROM edges_depends_on WHERE from_id = ?1 OR to_id = ?1", params![node_id])?;
+        tx.execute("DELETE FROM edges_implements WHERE from_id = ?1 OR to_id = ?1", params![node_id])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn delete_node(&mut self, node_id: &str) -> Result<()> {
+        self.delete_edges_for_node(node_id)?;
+
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM nodes_fts WHERE rowid IN (SELECT rowid FROM nodes WHERE node_id = ?1)", params![node_id])?;
+        tx.execute("DELETE FROM nodes WHERE node_id = ?1", params![node_id])?;
+
+        tx.execute("DELETE FROM node_embeddings WHERE node_id = ?1", params![node_id])?;
+        tx.execute("DELETE FROM source_embeddings WHERE node_id = ?1", params![node_id])?;
+
+        tx.commit()?;
+
+        Ok(())
+    }
+
     pub fn delete_nodes_for_file(&mut self, file_path: &str) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
 
