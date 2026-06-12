@@ -33,7 +33,7 @@ export async function activate(context: vscode.ExtensionContext) {
     timeout: 30000
   });
 
-  const mcpServerManager = new McpServerManager();
+  mcpServerManager = new McpServerManager();
   const sidebarProvider = new SidebarProvider(context.extensionUri, mcpServerManager, cliBridge);
 
   context.subscriptions.push(
